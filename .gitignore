@@ -7,6 +7,18 @@ out-tsc
 
 # dependencies
 node_modules
+.npm-cache
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+.cursor/
+.agents/
+.claude/
+.nx/
+.polygraph/
+.self-healing/
+.migrate-runs/
 
 # IDEs and editors
 /.idea
@@ -48,3 +60,16 @@ Thumbs.db
 .nx/polygraph
 .nx/self-healing
 .nx/migrate-runs
+
+# Next.js
+.next
+out
+test-output
+
+# Python
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache

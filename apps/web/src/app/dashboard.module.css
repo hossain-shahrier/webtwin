@@ -1,0 +1,124 @@
+.page {
+  background: #020617;
+  color: #e2e8f0;
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+.topbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.kicker {
+  color: #64748b;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+}
+
+.topbar h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.back {
+  color: #93c5fd;
+  display: inline-block;
+  margin-bottom: 1rem;
+}
+
+.list {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.card {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  display: block;
+  padding: 1rem;
+}
+
+.cardHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.status,
+.statusPill {
+  background: #172554;
+  border-radius: 999px;
+  color: #93c5fd;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  text-transform: uppercase;
+}
+
+.id {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.goal {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.target,
+.empty {
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.section {
+  margin-top: 2rem;
+}
+
+.section h2 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.detailGrid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.detailGrid dt {
+  color: #64748b;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.timeline {
+  color: #cbd5e1;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.event {
+  color: #64748b;
+}
+
+.error {
+  background: #450a0a;
+  border-radius: 8px;
+  color: #fecaca;
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.85rem;
+}

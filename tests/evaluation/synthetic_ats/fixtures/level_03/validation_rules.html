@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Validation</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .error { color: #b00020; margin-top: 0.5rem; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Date Validation</h1>
+    <form id="date-form">
+      <label for="start_date">Start Date</label>
+      <input id="start_date" name="start_date" type="date" required />
+
+      <label for="end_date">End Date</label>
+      <input id="end_date" name="end_date" type="date" required />
+
+      <button id="submit" type="button">Submit</button>
+      <div id="validation_error" class="error hidden" role="alert">
+        End date must be after start date.
+      </div>
+    </form>
+
+    <script>
+      const startDate = document.getElementById("start_date");
+      const endDate = document.getElementById("end_date");
+      const submit = document.getElementById("submit");
+      const validationError = document.getElementById("validation_error");
+
+      submit.addEventListener("click", () => {
+        validationError.classList.add("hidden");
+        if (startDate.value && endDate.value && endDate.value <= startDate.value) {
+          validationError.classList.remove("hidden");
+        }
+      });
+    </script>
+  </body>
+</html>

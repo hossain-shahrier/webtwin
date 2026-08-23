@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Multi Condition</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Employment Details</h1>
+    <label for="employment_type">Employment Type</label>
+    <select id="employment_type" name="employment_type">
+      <option value="permanent">Permanent</option>
+      <option value="contract">Contract</option>
+    </select>
+
+    <label for="remote">Remote</label>
+    <select id="remote" name="remote">
+      <option value="no">No</option>
+      <option value="yes">Yes</option>
+    </select>
+
+    <div id="end_date_group" class="hidden">
+      <label for="end_date">End Date</label>
+      <input id="end_date" name="end_date" type="date" />
+    </div>
+
+    <div id="remote_contract_group" class="hidden">
+      <label for="remote_policy">Remote Policy</label>
+      <input id="remote_policy" name="remote_policy" type="text" required />
+    </div>
+
+    <script>
+      const employment = document.getElementById("employment_type");
+      const remote = document.getElementById("remote");
+      const endDateGroup = document.getElementById("end_date_group");
+      const remoteContractGroup = document.getElementById("remote_contract_group");
+      const endDate = document.getElementById("end_date");
+      const remotePolicy = document.getElementById("remote_policy");
+
+      function sync() {
+        const isContract = employment.value === "contract";
+        const isRemote = remote.value === "yes";
+        endDateGroup.classList.toggle("hidden", !isContract);
+        endDate.required = isContract;
+        remoteContractGroup.classList.toggle("hidden", !(isContract && isRemote));
+        remotePolicy.required = isContract && isRemote;
+      }
+
+      employment.addEventListener("change", sync);
+      remote.addEventListener("change", sync);
+      sync();
+    </script>
+  </body>
+</html>

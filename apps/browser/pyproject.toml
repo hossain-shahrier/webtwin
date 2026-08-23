@@ -1,0 +1,14 @@
+[project]
+name = "browser"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "playwright>=1.62.0",
+    "webtwin-core",
+    "httpx>=0.28.0",
+]
+
+[tool.uv.sources]
+webtwin-core = { path = "../../python/webtwin_core", editable = true }

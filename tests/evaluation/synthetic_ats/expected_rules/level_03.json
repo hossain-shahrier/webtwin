@@ -1,0 +1,7 @@
+[
+  {
+    "id": "l3-date-order-validation",
+    "condition": { "field": "submit", "operator": "clicked", "value": true },
+    "effect": { "field": "validation_error", "visible": true }
+  }
+]

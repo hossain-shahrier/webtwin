@@ -1,0 +1,37 @@
+{
+  "name": "evaluation",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "tests/evaluation",
+  "tags": ["type:test", "scope:evaluation"],
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "WEBTWIN_AUTO_LOGIN=1 WEBTWIN_API_URL=http://127.0.0.1:8060 uv run --directory apps/browser python ../../tests/evaluation/run_auth_test.py",
+        "cwd": "."
+      }
+    },
+    "benchmark": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "WEBTWIN_HEADLESS=true WEBTWIN_API_URL=http://127.0.0.1:8060 uv run --directory apps/browser python ../../tests/evaluation/run_benchmark.py",
+        "cwd": "."
+      }
+    },
+    "explore": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --directory apps/browser python ../../tests/evaluation/run_exploration_test.py",
+        "cwd": "."
+      }
+    },
+    "compare-policies": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "WEBTWIN_API_URL=http://127.0.0.1:8060 uv run --directory apps/browser python ../../tests/evaluation/run_policy_comparison.py",
+        "cwd": "."
+      }
+    }
+  }
+}

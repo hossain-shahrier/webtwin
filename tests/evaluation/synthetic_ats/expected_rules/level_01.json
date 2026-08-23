@@ -1,0 +1,12 @@
+[
+  {
+    "id": "l1-reason-visible",
+    "condition": { "field": "condition", "operator": "equals", "value": "no" },
+    "effect": { "field": "reason", "visible": true, "required": true }
+  },
+  {
+    "id": "l1-details-visible",
+    "condition": { "field": "condition", "operator": "equals", "value": "no" },
+    "effect": { "field": "details", "visible": true }
+  }
+]

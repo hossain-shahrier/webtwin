@@ -1,0 +1,30 @@
+{
+  "name": "webtwin-core",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "python/webtwin_core/src/webtwin_core",
+  "tags": ["type:lib", "scope:shared"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run ruff check .",
+        "cwd": "python/webtwin_core"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pytest",
+        "cwd": "python/webtwin_core"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run mypy src",
+        "cwd": "python/webtwin_core"
+      }
+    }
+  }
+}

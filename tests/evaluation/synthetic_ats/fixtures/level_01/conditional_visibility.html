@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Conditions</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem;
+      }
+      .hidden {
+        display: none;
+      }
+      label {
+        display: block;
+        margin-top: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Job Offer — Conditions</h1>
+    <form id="conditions-form">
+      <label for="condition">Has previous experience?</label>
+      <select id="condition" name="condition">
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+
+      <div id="reason-group" class="hidden">
+        <label for="reason">Reason</label>
+        <input id="reason" name="reason" type="text" required />
+      </div>
+
+      <div id="details-group" class="hidden">
+        <label for="details">Details</label>
+        <textarea id="details" name="details"></textarea>
+      </div>
+    </form>
+
+    <script>
+      const condition = document.getElementById("condition");
+      const reasonGroup = document.getElementById("reason-group");
+      const detailsGroup = document.getElementById("details-group");
+      const reason = document.getElementById("reason");
+
+      function syncVisibility() {
+        const show = condition.value === "no";
+        reasonGroup.classList.toggle("hidden", !show);
+        detailsGroup.classList.toggle("hidden", !show);
+        reason.required = show;
+      }
+
+      condition.addEventListener("change", syncVisibility);
+      syncVisibility();
+    </script>
+  </body>
+</html>

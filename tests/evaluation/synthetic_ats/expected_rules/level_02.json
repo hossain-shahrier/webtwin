@@ -1,0 +1,7 @@
+[
+  {
+    "id": "l2-end-date-visible",
+    "condition": { "field": "employment_type", "operator": "equals", "value": "contract" },
+    "effect": { "field": "end_date", "visible": true, "required": true }
+  }
+]

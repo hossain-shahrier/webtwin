@@ -1,0 +1,53 @@
+{
+  "name": "api",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/api",
+  "tags": ["type:app", "scope:api"],
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "options": {
+        "command": "PORT=8060 uv run python main.py",
+        "cwd": "apps/api"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run ruff check .",
+        "cwd": "apps/api"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pytest",
+        "cwd": "apps/api"
+      }
+    },
+    "migrate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "PYTHONPATH=. uv run python scripts/migrate.py",
+        "cwd": "apps/api"
+      }
+    },
+    "dev:postgres": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "options": {
+        "command": "WEBTWIN_STORE=postgres PORT=8060 uv run python main.py",
+        "cwd": "apps/api"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run mypy .",
+        "cwd": "apps/api"
+      }
+    }
+  }
+}

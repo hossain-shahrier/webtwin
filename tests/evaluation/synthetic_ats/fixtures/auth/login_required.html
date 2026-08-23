@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Login Required</title>
+    <style>
+      body { font-family: sans-serif; max-width: 420px; margin: 3rem auto; }
+      label { display: block; margin-top: 1rem; }
+      input { width: 100%; padding: 0.5rem; margin-top: 0.25rem; }
+      button { margin-top: 1rem; padding: 0.5rem 1rem; }
+      #app { display: none; margin-top: 2rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Sign in</h1>
+    <form id="login-form">
+      <label>Email<input type="email" name="email" required /></label>
+      <label>Password<input type="password" name="password" required /></label>
+      <button type="submit">Login</button>
+    </form>
+    <div id="app">
+      <h2>Protected Application</h2>
+      <p>You are authenticated.</p>
+      <label>Condition
+        <select id="condition" name="condition">
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </label>
+      <div id="details" style="display: none; margin-top: 1rem;">
+        <label>Details<input id="details_field" name="details" /></label>
+      </div>
+    </div>
+    <script>
+      document.getElementById('login-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        document.getElementById('login-form').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        history.replaceState({}, '', '#authenticated');
+      });
+      document.getElementById('condition').addEventListener('change', (event) => {
+        document.getElementById('details').style.display = event.target.value === 'no' ? 'block' : 'none';
+      });
+    </script>
+  </body>
+</html>

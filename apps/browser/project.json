@@ -1,0 +1,37 @@
+{
+  "name": "browser",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/browser",
+  "tags": ["type:app", "scope:browser"],
+  "targets": {
+    "install-browsers": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run playwright install chromium",
+        "cwd": "apps/browser"
+      }
+    },
+    "run": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run python main.py",
+        "cwd": "apps/browser"
+      }
+    },
+    "investigate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "WEBTWIN_HEADLESS=true WEBTWIN_API_URL=http://127.0.0.1:8060 uv run python main.py",
+        "cwd": "apps/browser"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run ruff check .",
+        "cwd": "apps/browser"
+      }
+    }
+  }
+}

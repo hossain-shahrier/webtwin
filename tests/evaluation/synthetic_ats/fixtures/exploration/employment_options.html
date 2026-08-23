@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Exploration</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Employment Exploration</h1>
+    <form id="employment-form">
+      <label for="employment_type">Employment Type</label>
+      <select id="employment_type" name="employment_type">
+        <option value="permanent">Permanent</option>
+        <option value="contract">Contract</option>
+        <option value="temporary">Temporary</option>
+      </select>
+
+      <div id="contract_fields" class="hidden">
+        <label for="end_date">End Date</label>
+        <input id="end_date" name="end_date" type="date" />
+      </div>
+
+      <div id="temporary_fields" class="hidden">
+        <label for="agency">Agency</label>
+        <input id="agency" name="agency" type="text" />
+      </div>
+
+      <button type="button" id="expand">Expand details</button>
+      <button type="submit" id="save">Save</button>
+      <button type="button" id="delete-account">Delete Account</button>
+    </form>
+
+    <script>
+      const employment = document.getElementById("employment_type");
+      const contractFields = document.getElementById("contract_fields");
+      const temporaryFields = document.getElementById("temporary_fields");
+
+      function sync() {
+        contractFields.classList.toggle("hidden", employment.value !== "contract");
+        temporaryFields.classList.toggle("hidden", employment.value !== "temporary");
+      }
+
+      employment.addEventListener("change", sync);
+      sync();
+    </script>
+  </body>
+</html>
