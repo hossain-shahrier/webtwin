@@ -43,5 +43,6 @@ class Store(Protocol):
     verification_runs: EntityMap
     evaluation_runs: EntityMap
     workflows: EntityMap
+    network_events: EntityMap
 
     def clear(self) -> None: ...

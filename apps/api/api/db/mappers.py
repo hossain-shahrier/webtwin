@@ -571,3 +571,60 @@ def workflow_from_row(row: "WorkflowRow") -> "Workflow":
         confidence=row.confidence,
         created_at=row.created_at,
     )
+
+
+def network_event_to_row(value) -> "NetworkEventRow":
+    from datetime import UTC, datetime
+    from uuid import UUID
+
+    from api.db.schema import NetworkEventRow
+
+    if isinstance(value, dict):
+        data = value
+    else:
+        data = value.model_dump(mode="json") if hasattr(value, "model_dump") else dict(value)
+
+    def _uuid(raw):
+        if raw is None:
+            return None
+        return raw if isinstance(raw, UUID) else UUID(str(raw))
+
+    captured = data.get("captured_at")
+    if isinstance(captured, str):
+        captured_at = datetime.fromisoformat(captured.replace("Z", "+00:00"))
+    elif captured is None:
+        captured_at = datetime.now(UTC)
+    else:
+        captured_at = captured
+
+    return NetworkEventRow(
+        id=_uuid(data.get("id")),
+        investigation_id=_uuid(data["investigation_id"]),
+        timeline_event_id=_uuid(data.get("timeline_event_id")),
+        method=str(data.get("method") or "GET"),
+        url=str(data.get("url") or ""),
+        status_code=data.get("status_code"),
+        timing_ms=data.get("timing_ms"),
+        request_headers=data.get("request_headers") or {},
+        response_headers=data.get("response_headers") or {},
+        body_shape=data.get("body_shape") or {},
+        evidence_id=_uuid(data.get("evidence_id")),
+        captured_at=captured_at,
+    )
+
+
+def network_event_from_row(row: "NetworkEventRow") -> dict:
+    return {
+        "id": str(row.id),
+        "investigation_id": str(row.investigation_id),
+        "timeline_event_id": str(row.timeline_event_id) if row.timeline_event_id else None,
+        "method": row.method,
+        "url": row.url,
+        "status_code": row.status_code,
+        "timing_ms": row.timing_ms,
+        "request_headers": row.request_headers or {},
+        "response_headers": row.response_headers or {},
+        "body_shape": row.body_shape or {},
+        "evidence_id": str(row.evidence_id) if row.evidence_id else None,
+        "captured_at": row.captured_at.isoformat() if row.captured_at else None,
+    }

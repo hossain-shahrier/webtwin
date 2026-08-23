@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 from webtwin_core.evaluation.metrics import ExpectedRule, compute_metrics
+from webtwin_core.exploration import ExplorationBudget
 from webtwin_core.models.rule_status import RuleStatus
 
 import sys
@@ -64,10 +65,20 @@ LEVELS = {
         ],
     },
     "level_07": {
-        "mode": "discovery",
-        "fixture": BENCHMARK_ROOT / "fixtures/level_07/admin.html",
+        "mode": "dual_role",
         "expected": BENCHMARK_ROOT / "expected_rules/level_07.json",
-        "actions": [{"field": "role_mode", "value": "admin"}],
+        "roles": [
+            {
+                "role_scope": "admin",
+                "fixture": BENCHMARK_ROOT / "fixtures/level_07/admin.html",
+                "actions": [{"field": "role_mode", "value": "admin"}],
+            },
+            {
+                "role_scope": "recruiter",
+                "fixture": BENCHMARK_ROOT / "fixtures/level_07/recruiter.html",
+                "actions": [{"field": "role_mode", "value": "recruiter"}],
+            },
+        ],
     },
     "level_08": {
         "mode": "discovery",
@@ -80,6 +91,7 @@ LEVELS = {
         "fixture": BENCHMARK_ROOT / "fixtures/level_09/budget_efficiency.html",
         "expected": BENCHMARK_ROOT / "expected_rules/level_09.json",
         "policy": "information_gain",
+        "max_actions": 6,
     },
 }
 
@@ -102,13 +114,30 @@ def _to_expected_from_discovered(rules) -> list[ExpectedRule]:
 def run_level(level: str, api_url: str, headless: bool) -> None:
     config = LEVELS[level]
     expected = _to_expected_rules(config["expected"])
+    candidates = []
+    verified_rules = []
+    actions = 0
 
-    if config.get("mode") == "exploration":
+    if config.get("mode") == "dual_role":
+        for role in config["roles"]:
+            os.environ["WEBTWIN_ROLE_SCOPE"] = role["role_scope"]
+            _id, role_cands, role_verified, role_actions = run_discovery_and_verification(
+                role["fixture"],
+                discovery_actions=role["actions"],
+                api_base_url=api_url,
+                headless=headless,
+            )
+            candidates.extend(role_cands)
+            verified_rules.extend(role_verified)
+            actions += role_actions
+        os.environ.pop("WEBTWIN_ROLE_SCOPE", None)
+    elif config.get("mode") == "exploration":
         _investigation_id, candidates, verified_rules, actions, _metrics = run_exploration_and_verification(
             config["fixture"],
             policy=config.get("policy", "information_gain"),
             api_base_url=api_url,
             headless=headless,
+            budget=ExplorationBudget(max_actions=int(config.get("max_actions", 12))),
         )
     else:
         _investigation_id, candidates, verified_rules, actions = run_discovery_and_verification(

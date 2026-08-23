@@ -93,22 +93,24 @@ def infer_candidate_rules(
         if change.attribute == "required" and change.before is False and change.after is True
     ]
 
-    # Multi-trigger: each value change can explain each newly visible field
-    # (skip alert/validation surfaces when a clickable control exists — those are click-driven)
+    # Multi-trigger: prefer the latest value change as primary cause (reduces FP noise)
     click_hints = ("submit", "validate", "unlock", "login", "save", "continue", "next", "check")
     click_fields = [
         name
         for name in after_fields
         if any(hint in name.lower() for hint in click_hints)
     ]
+    primary_value_changes = value_changes if value_changes else []
 
     for visibility in visibility_changes:
         field_name = visibility.field.lower()
         is_alert = any(token in field_name for token in ("error", "alert", "validation", "warning"))
         if is_alert and click_fields:
             continue
-        triggers = value_changes or []
-        for trigger_change in triggers:
+        # Skip newly revealed controls that are themselves buttons (not effect fields)
+        if any(hint in visibility.field.lower() for hint in click_hints):
+            continue
+        for trigger_change in primary_value_changes:
             trigger = trigger_change.field
             trigger_value = after_fields.get(trigger)
             if trigger_value is None or trigger_value.value is None:
@@ -128,7 +130,7 @@ def infer_candidate_rules(
                         visible=True,
                         required=effect_field.required if effect_field else None,
                     ),
-                    confidence=0.6 if len(triggers) == 1 else 0.55,
+                    confidence=0.6 if len(value_changes) == 1 else 0.55,
                     status=RuleStatus.CANDIDATE,
                 )
             )
@@ -137,6 +139,8 @@ def infer_candidate_rules(
     for visibility in visibility_changes:
         field_name = visibility.field.lower()
         is_alert = any(token in field_name for token in ("error", "alert", "validation", "warning"))
+        if any(hint in field_name for hint in click_hints):
+            continue
         if any(
             rule.effect.field == visibility.field
             and rule.effect.visible is True
@@ -160,9 +164,14 @@ def infer_candidate_rules(
                 )
                 break
 
-    # Required-field candidates (L3 validation path)
+    # Required-field candidates — skip if visibility rule already covers same trigger+field
+    existing = {
+        (rule.condition.field, rule.effect.field)
+        for rule in rules
+        if rule.effect.visible is True
+    }
     for required in required_changes:
-        trigger = value_changes[0].field if value_changes else None
+        trigger = value_changes[-1].field if value_changes else None
         if trigger is None:
             # Fall back: field became required without a clear trigger — still emit weak candidate
             rules.append(
@@ -175,6 +184,8 @@ def infer_candidate_rules(
                     status=RuleStatus.CANDIDATE,
                 )
             )
+            continue
+        if (trigger, required.field) in existing:
             continue
         trigger_value = after_fields.get(trigger)
         if trigger_value is None or trigger_value.value is None:

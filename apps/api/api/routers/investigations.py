@@ -73,14 +73,24 @@ def get_transitions(investigation_id: UUID) -> list[InvestigationTransition]:
     return svc.get_transitions(investigation_id)
 
 
-@router.get("/{investigation_id}", response_model=Investigation)
-def get_investigation(investigation_id: UUID) -> Investigation:
-    return svc.get_investigation(investigation_id)
-
-
 @router.get("", response_model=list[Investigation])
 def list_investigations() -> list[Investigation]:
     return svc.list_investigations()
+
+
+@router.get("/pending", response_model=list[Investigation])
+def list_pending() -> list[Investigation]:
+    return svc.list_pending_investigations()
+
+
+@router.post("/{investigation_id}/claim", response_model=Investigation)
+def claim_investigation(investigation_id: UUID) -> Investigation:
+    return svc.claim_investigation(investigation_id)
+
+
+@router.get("/{investigation_id}", response_model=Investigation)
+def get_investigation(investigation_id: UUID) -> Investigation:
+    return svc.get_investigation(investigation_id)
 
 
 @router.post("/{investigation_id}/observations", response_model=Observation, status_code=201)

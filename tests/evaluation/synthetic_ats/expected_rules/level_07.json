@@ -1,7 +1,12 @@
 [
   {
-    "id": "l7-approval-visible",
+    "id": "l7-approval-visible-admin",
     "condition": { "field": "role_mode", "operator": "equals", "value": "admin" },
     "effect": { "field": "approval_notes", "visible": true }
+  },
+  {
+    "id": "l7-recruiter-note-visible",
+    "condition": { "field": "role_mode", "operator": "equals", "value": "recruiter" },
+    "effect": { "field": "recruiter_note", "visible": true }
   }
 ]

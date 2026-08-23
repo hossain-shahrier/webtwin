@@ -32,16 +32,29 @@ Browser stays on the host (Playwright):
 
 ```bash
 WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run browser:investigate
+# Or poll dashboard-created jobs:
+WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run browser:worker
 ```
 
 ## Optional Knowledge Graph
 
 ```bash
 docker compose -f infrastructure/docker/docker-compose.yml --profile kg up -d neo4j
+uv sync --directory apps/api --group kg
 WEBTWIN_KG_ENABLED=1 pnpm nx run api:sync-kg
 ```
 
 Q&A (evidence-grounded): `POST /investigations/{id}/questions` with `{ "question": "Why does End Date appear?" }`.
+
+## Optional remote LLM planner
+
+```bash
+export WEBTWIN_LLM_PROVIDER=openai   # or anthropic | heuristic
+export WEBTWIN_LLM_API_KEY=...
+# Ablation still includes llm policy via heuristic when no key is set
+WEBTWIN_EXPLORATION_POLICIES=random,first_unexplored,information_gain,llm \
+  pnpm nx run evaluation:compare-policies
+```
 
 ## Tests
 

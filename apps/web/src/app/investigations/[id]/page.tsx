@@ -34,6 +34,9 @@ export default function InvestigationDetailPage() {
   const [metrics, setMetrics] = useState<EvaluationRun[]>([]);
   const [question, setQuestion] = useState('Why does this field appear?');
   const [answer, setAnswer] = useState<string | null>(null);
+  const [citations, setCitations] = useState<
+    Array<{ rule_id?: string; evidence_id?: string; confidence?: number }>
+  >([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -229,8 +232,10 @@ export default function InvestigationDetailPage() {
             try {
               const result = await askQuestion(investigation.id, question);
               setAnswer(result.answer);
+              setCitations(result.citations ?? []);
             } catch (err) {
               setAnswer(err instanceof Error ? err.message : 'Question failed');
+              setCitations([]);
             }
           }}
         >
@@ -244,6 +249,22 @@ export default function InvestigationDetailPage() {
           </button>
         </form>
         {answer && <p className={styles.empty}>{answer}</p>}
+        {citations.length > 0 && (
+          <ul className={styles.list}>
+            {citations.map((citation, index) => (
+              <li key={`${citation.rule_id ?? 'r'}-${citation.evidence_id ?? index}`} className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <span className={styles.status}>citation</span>
+                  <span className={styles.id}>{citation.confidence ?? '—'}</span>
+                </div>
+                <p className={styles.target}>
+                  rule={citation.rule_id?.slice(0, 8) ?? '—'} evidence=
+                  {citation.evidence_id?.slice(0, 8) ?? '—'}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </main>
   );

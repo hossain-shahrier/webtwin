@@ -1,9 +1,12 @@
 import os
+import time
 from pathlib import Path
+from uuid import UUID
 
 from webtwin_core.defaults import DEFAULT_API_URL
 from webtwin_core.exploration import ExplorationBudget
 
+from browser.client.api import ApiClient
 from browser.investigation.runner import (
     run_discovery_and_verification,
     run_exploration_and_verification,
@@ -13,32 +16,37 @@ ROOT = Path(__file__).resolve().parents[2]
 BENCHMARK_ROOT = ROOT / "tests/evaluation/synthetic_ats"
 
 
-def main() -> None:
-    fixture = Path(
-        os.environ.get(
-            "WEBTWIN_FIXTURE",
-            str(BENCHMARK_ROOT / "fixtures/level_01/conditional_visibility.html"),
-        )
-    )
-    api_url = os.environ.get("WEBTWIN_API_URL", DEFAULT_API_URL)
-    headless = os.environ.get("WEBTWIN_HEADLESS", "true").lower() == "true"
-    mode = os.environ.get("WEBTWIN_INVESTIGATE_MODE", "exploration")
-
-    if mode == "discovery":
+def _run_one(
+    *,
+    target: str | Path,
+    api_url: str,
+    headless: bool,
+    mode: str,
+    investigation_id: UUID | None = None,
+) -> None:
+    if mode == "discovery" and investigation_id is None:
         investigation_id, _candidates, verified_rules, _actions = run_discovery_and_verification(
-            fixture,
+            Path(target) if not str(target).startswith("http") else Path(
+                os.environ.get(
+                    "WEBTWIN_FIXTURE",
+                    str(BENCHMARK_ROOT / "fixtures/level_01/conditional_visibility.html"),
+                )
+            ),
             discovery_actions=[{"field": "condition", "value": "no"}],
             api_base_url=api_url,
             headless=headless,
         )
     else:
+        policy = os.environ.get("WEBTWIN_POLICY", "information_gain")
+        # Prefer policy encoded in feature_scope from dashboard create
         investigation_id, _candidates, verified_rules, _actions, metrics = (
             run_exploration_and_verification(
-                fixture,
-                policy=os.environ.get("WEBTWIN_POLICY", "information_gain"),
+                target,
+                policy=policy,
                 api_base_url=api_url,
                 headless=headless,
                 budget=ExplorationBudget(max_actions=int(os.environ.get("WEBTWIN_MAX_ACTIONS", "12"))),
+                investigation_id=investigation_id,
             )
         )
         print(
@@ -49,6 +57,59 @@ def main() -> None:
     print(f"Investigation: {investigation_id}")
     for rule in verified_rules:
         print(f"{rule.status}: {rule.name} (confidence={rule.confidence})")
+
+
+def run_worker(api_url: str, headless: bool) -> None:
+    """Poll API for dashboard-created investigations and execute them."""
+    client = ApiClient(api_url)
+    poll_seconds = float(os.environ.get("WEBTWIN_WORKER_POLL_SECONDS", "3"))
+    print(f"Worker polling {api_url}/investigations/pending every {poll_seconds}s")
+    while True:
+        pending = client.list_pending()
+        if not pending:
+            time.sleep(poll_seconds)
+            continue
+        job = pending[0]
+        policy = job.feature_scope or os.environ.get("WEBTWIN_POLICY", "information_gain")
+        os.environ["WEBTWIN_POLICY"] = policy
+        print(f"Claiming {job.id} → {job.target_url} (policy={policy})")
+        _run_one(
+            target=job.target_url,
+            api_url=api_url,
+            headless=headless,
+            mode="exploration",
+            investigation_id=job.id,
+        )
+
+
+def main() -> None:
+    api_url = os.environ.get("WEBTWIN_API_URL", DEFAULT_API_URL)
+    headless = os.environ.get("WEBTWIN_HEADLESS", "true").lower() == "true"
+    mode = os.environ.get("WEBTWIN_INVESTIGATE_MODE", "exploration")
+
+    if os.environ.get("WEBTWIN_WORKER", "").lower() in {"1", "true", "yes"}:
+        run_worker(api_url, headless)
+        return
+
+    fixture = Path(
+        os.environ.get(
+            "WEBTWIN_FIXTURE",
+            str(BENCHMARK_ROOT / "fixtures/level_01/conditional_visibility.html"),
+        )
+    )
+    investigation_id_env = os.environ.get("WEBTWIN_INVESTIGATION_ID")
+    investigation_id = UUID(investigation_id_env) if investigation_id_env else None
+    target: str | Path = fixture
+    if investigation_id is not None:
+        target = ApiClient(api_url).get_investigation(investigation_id).target_url
+
+    _run_one(
+        target=target,
+        api_url=api_url,
+        headless=headless,
+        mode=mode,
+        investigation_id=investigation_id,
+    )
 
 
 if __name__ == "__main__":

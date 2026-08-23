@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Recruiter Role</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body data-role="recruiter">
+    <h1>Compensation (Recruiter)</h1>
+    <form id="recruiter-form">
+      <label for="role_mode">View As</label>
+      <select id="role_mode" name="role_mode">
+        <option value="admin" selected>Admin</option>
+        <option value="recruiter">Recruiter</option>
+      </select>
+
+      <div id="salary_group">
+        <label for="salary">Salary</label>
+        <input id="salary" name="salary" type="number" readonly />
+      </div>
+
+      <div id="recruiter_note_group" class="hidden">
+        <label for="recruiter_note">Recruiter Note</label>
+        <input id="recruiter_note" name="recruiter_note" type="text" />
+      </div>
+
+      <div id="approval_group">
+        <label for="approval_notes">Approval Notes</label>
+        <textarea id="approval_notes" name="approval_notes"></textarea>
+      </div>
+    </form>
+
+    <script>
+      const roleMode = document.getElementById("role_mode");
+      const approvalGroup = document.getElementById("approval_group");
+      const recruiterNoteGroup = document.getElementById("recruiter_note_group");
+      const salary = document.getElementById("salary");
+
+      function sync() {
+        const isAdmin = roleMode.value === "admin";
+        approvalGroup.classList.toggle("hidden", !isAdmin);
+        recruiterNoteGroup.classList.toggle("hidden", isAdmin);
+        salary.readOnly = true;
+      }
+
+      roleMode.addEventListener("change", sync);
+      sync();
+    </script>
+  </body>
+</html>

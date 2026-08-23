@@ -143,10 +143,56 @@ class LLMPlanner:
         ]
 
     def _call_remote_json(self, system: str, user: str) -> dict[str, Any] | None:
-        """Optional provider hook — returns None when unset/unavailable (safe fallback)."""
+        """Optional provider hook — structured JSON only; falls back when unavailable."""
         api_key = os.environ.get("WEBTWIN_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
         if not api_key or self.provider == "heuristic":
             return None
-        # Intentionally minimal: no hard dependency; callers rely on heuristic fallback.
-        _ = (system, user)
+        try:
+            import httpx
+        except ImportError:
+            return None
+
+        try:
+            if self.provider == "openai":
+                response = httpx.post(
+                    os.environ.get("WEBTWIN_LLM_BASE_URL", "https://api.openai.com/v1/chat/completions"),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json={
+                        "model": os.environ.get("WEBTWIN_LLM_MODEL", "gpt-4o-mini"),
+                        "temperature": 0,
+                        "response_format": {"type": "json_object"},
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": user},
+                        ],
+                    },
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                content = response.json()["choices"][0]["message"]["content"]
+                return json.loads(content)
+            if self.provider == "anthropic":
+                response = httpx.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": os.environ.get("WEBTWIN_LLM_MODEL", "claude-3-5-haiku-latest"),
+                        "max_tokens": 512,
+                        "system": system,
+                        "messages": [{"role": "user", "content": user}],
+                    },
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                content = response.json()["content"][0]["text"]
+                start = content.find("{")
+                end = content.rfind("}")
+                if start >= 0 and end > start:
+                    return json.loads(content[start : end + 1])
+        except Exception:
+            return None
         return None

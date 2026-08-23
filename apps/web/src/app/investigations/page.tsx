@@ -80,8 +80,8 @@ export default function InvestigationsPage() {
           </button>
         </form>
         <p className={styles.empty}>
-          Browser worker still runs via Nx (`browser:investigate` / evaluation targets). Policy is
-          recorded on the goal for operator tracking.
+          Creates a pending investigation. Run the browser worker to execute it:{' '}
+          <code>pnpm nx run browser:worker</code>
         </p>
       </section>
 

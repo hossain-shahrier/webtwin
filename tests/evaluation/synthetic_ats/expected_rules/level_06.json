@@ -1,7 +1,12 @@
 [
   {
-    "id": "l6-bonus-visible",
+    "id": "l6-bonus-visible-rating",
     "condition": { "field": "rating", "operator": "equals", "value": "exceeds" },
+    "effect": { "field": "bonus_code", "visible": true }
+  },
+  {
+    "id": "l6-bonus-visible-tenure",
+    "condition": { "field": "tenure_years", "operator": "equals", "value": "5" },
     "effect": { "field": "bonus_code", "visible": true }
   }
 ]

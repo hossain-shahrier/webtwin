@@ -159,7 +159,8 @@ def _exploration_loop(
         sequence += 1
 
     if network is not None:
-        for evidence in network.to_evidence():
+        nearest = timeline.events[-1].id if timeline.events else None
+        for evidence in network.to_evidence(timeline_event_id=nearest):
             client.record_evidence(evidence)
 
     _transition(client, investigation_id, TransitionEvent.GENERATE_RULES)
@@ -167,15 +168,17 @@ def _exploration_loop(
 
 
 def run_exploration_and_verification(
-    target: Path,
+    target: Path | str,
     *,
     policy: PolicyName = "first_unexplored",
     api_base_url: str | None = None,
     headless: bool = True,
     budget: ExplorationBudget | None = None,
     seed: int | None = None,
+    investigation_id: UUID | None = None,
 ) -> tuple[UUID, list[BusinessRule], list[BusinessRule], int, ExplorationMetrics]:
     from browser.observer.network import NetworkCollector
+    from urllib.parse import urlparse
 
     client = ApiClient(api_base_url or os.environ.get("WEBTWIN_API_URL") or DEFAULT_API_URL)
     session_manager = SessionManager()
@@ -190,26 +193,45 @@ def run_exploration_and_verification(
     verified_rules: list[BusinessRule] = []
     actions_taken = 0
 
-    investigation = client.create_investigation(
-        Investigation(
-            goal=f"Explore business logic in {target.name}",
-            target_url=target.as_uri(),
-            feature_scope=target.parent.name,
-            application_version=os.environ.get("WEBTWIN_APP_VERSION", "synthetic-1"),
-            environment=os.environ.get("WEBTWIN_ENVIRONMENT", "eval"),
-            role_scope=os.environ.get("WEBTWIN_ROLE_SCOPE"),
-            goal_spec=InvestigationGoal(
-                type=InvestigationGoalType.DISCOVER_BUSINESS_LOGIC,
-                target=target.as_uri(),
-                scope=target.parent.name,
-                description=f"Explore business logic in {target.name}",
-            ),
+    if isinstance(target, Path):
+        target_url = target.as_uri()
+        target_name = target.name
+        target_scope = target.parent.name
+    else:
+        target_url = target
+        parsed = urlparse(target_url)
+        target_name = Path(parsed.path).name or "target"
+        target_scope = "worker"
+
+    if investigation_id is not None:
+        investigation = client.get_investigation(investigation_id)
+        target_url = investigation.target_url or target_url
+        if investigation.status == InvestigationStatus.CREATED:
+            investigation = client.claim_investigation(investigation_id)
+        if investigation.status == InvestigationStatus.INITIALIZING:
+            _transition(client, investigation.id, TransitionEvent.INIT_COMPLETE)
+    else:
+        investigation = client.create_investigation(
+            Investigation(
+                goal=f"Explore business logic in {target_name}",
+                target_url=target_url,
+                feature_scope=target_scope,
+                application_version=os.environ.get("WEBTWIN_APP_VERSION", "synthetic-1"),
+                environment=os.environ.get("WEBTWIN_ENVIRONMENT", "eval"),
+                role_scope=os.environ.get("WEBTWIN_ROLE_SCOPE"),
+                goal_spec=InvestigationGoal(
+                    type=InvestigationGoalType.DISCOVER_BUSINESS_LOGIC,
+                    target=target_url,
+                    scope=target_scope,
+                    description=f"Explore business logic in {target_name}",
+                ),
+            )
         )
-    )
+        client.upsert_session(investigation.id, auth_state=AuthState.UNKNOWN)
+        _transition(client, investigation.id, TransitionEvent.START)
+        _transition(client, investigation.id, TransitionEvent.INIT_COMPLETE)
 
     client.upsert_session(investigation.id, auth_state=AuthState.UNKNOWN)
-    _transition(client, investigation.id, TransitionEvent.START)
-    _transition(client, investigation.id, TransitionEvent.INIT_COMPLETE)
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=headless)
@@ -219,7 +241,7 @@ def run_exploration_and_verification(
         network.attach(page)
 
         try:
-            page.goto(target.as_uri())
+            page.goto(target_url)
             _handle_auth(page, context, client, investigation.id, session_manager, session_store)
             actions_taken = _exploration_loop(
                 page, client, investigation.id, controller, timeline, network=network
@@ -230,10 +252,17 @@ def run_exploration_and_verification(
             controller.known_rules = candidate_rules
 
             # Return to the investigation target before verification experiments
-            page.goto(target.as_uri())
+            page.goto(target_url)
             page.wait_for_timeout(100)
+            page_fields = {
+                element.name or element.selector.lstrip("#")
+                for element in capture_observation(page, investigation.id, with_screenshot=False).elements
+            }
 
             for rule in candidate_rules:
+                if rule.condition.field not in page_fields and rule.condition.operator != "clicked":
+                    verified_rules.append(rule)
+                    continue
                 _transition(client, investigation.id, TransitionEvent.START_VERIFICATION)
                 updated = verify_rule_on_page(page, client, investigation.id, rule)
                 verified_rules.append(updated)
@@ -361,7 +390,9 @@ def run_discovery_and_verification(
             after_state = client.record_state(after_observation.to_application_state(sequence=2))
             client.diff_states(investigation.id, before_state.id, after_state.id)
 
-            for evidence in network.to_evidence():
+            for evidence in network.to_evidence(
+                timeline_event_id=timeline.events[-1].id if timeline.events else None
+            ):
                 client.record_evidence(evidence)
 
             _transition(client, investigation.id, TransitionEvent.GENERATE_RULES)
@@ -388,5 +419,22 @@ def run_discovery_and_verification(
         finally:
             context.close()
             browser.close()
+
+    verified_count = sum(1 for rule in verified_rules if rule.status.value == "verified")
+    rules_per_action = (verified_count / actions_taken) if actions_taken else 0.0
+    from webtwin_core.evaluation.runs import EvaluationRun
+
+    metrics_run = EvaluationRun(
+        investigation_id=investigation.id,
+        policy="fixed_discovery",
+        level=target.parent.name,
+        actions_taken=actions_taken,
+        candidate_rules=len(candidate_rules),
+        verified_rules=verified_count,
+        rules_per_action=round(rules_per_action, 3),
+        pages_seen=1,
+        verification_accuracy=round(verified_count / len(verified_rules), 3) if verified_rules else 0.0,
+    )
+    client.record_metrics(investigation.id, metrics_run)
 
     return investigation.id, candidate_rules, verified_rules, actions_taken

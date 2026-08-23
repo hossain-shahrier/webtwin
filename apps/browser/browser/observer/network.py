@@ -103,15 +103,18 @@ class NetworkCollector:
 
         page.on("response", on_response)
 
-    def to_evidence(self) -> list[Evidence]:
+    def to_evidence(self, timeline_event_id: UUID | None = None) -> list[Evidence]:
         evidence_list: list[Evidence] = []
         for event in self.events:
+            if timeline_event_id is not None and event.timeline_event_id is None:
+                event.timeline_event_id = timeline_event_id
             evidence = Evidence(
                 investigation_id=self.investigation_id,
                 type=EvidenceType.NETWORK,
                 url=event.url,
                 payload={
                     "network_event_id": str(event.id),
+                    "timeline_event_id": str(event.timeline_event_id) if event.timeline_event_id else None,
                     "method": event.method,
                     "status_code": event.status_code,
                     "body_shape": event.body_shape,

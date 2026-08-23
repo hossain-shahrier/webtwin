@@ -131,6 +131,16 @@ class ApiClient:
         response.raise_for_status()
         return Investigation.model_validate(response.json())
 
+    def claim_investigation(self, investigation_id: UUID) -> Investigation:
+        response = httpx.post(f"{self.base_url}/investigations/{investigation_id}/claim")
+        response.raise_for_status()
+        return Investigation.model_validate(response.json())
+
+    def list_pending(self) -> list[Investigation]:
+        response = httpx.get(f"{self.base_url}/investigations/pending")
+        response.raise_for_status()
+        return [Investigation.model_validate(item) for item in response.json()]
+
     def record_metrics(self, investigation_id: UUID, run) -> object:
         from webtwin_core.evaluation.runs import EvaluationRun
 

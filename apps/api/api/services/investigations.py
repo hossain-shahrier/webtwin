@@ -145,6 +145,26 @@ def list_investigations() -> list[Investigation]:
     return list(store.investigations.values())
 
 
+def list_pending_investigations() -> list[Investigation]:
+    """Investigations waiting for a browser worker (status=created)."""
+    return [
+        item
+        for item in store.investigations.values()
+        if item.status == InvestigationStatus.CREATED
+    ]
+
+
+def claim_investigation(investigation_id: UUID) -> Investigation:
+    """Atomically claim a created investigation for the browser worker."""
+    investigation = get_investigation(investigation_id)
+    if investigation.status != InvestigationStatus.CREATED:
+        raise HTTPException(status_code=409, detail="Investigation is not claimable")
+    return transition_investigation(
+        investigation_id,
+        TransitionRequest(event=TransitionEvent.START, reason="claimed_by_worker"),
+    )
+
+
 def transition_investigation(investigation_id: UUID, request: TransitionRequest) -> Investigation:
     investigation = get_investigation(investigation_id)
     previous = investigation.status
@@ -313,6 +333,16 @@ def get_transitions(investigation_id: UUID) -> list[InvestigationTransition]:
 def record_observation(investigation_id: UUID, observation: Observation) -> Observation:
     get_investigation(investigation_id)
     store.observations[observation.id] = observation
+    # Persist screenshot as first-class evidence when path is present (H4)
+    if observation.screenshot_path:
+        shot = Evidence(
+            investigation_id=investigation_id,
+            type=EvidenceType.SCREENSHOT,
+            url=observation.url,
+            artifact_uri=observation.screenshot_path,
+            payload={"observation_id": str(observation.id), "label": "observation"},
+        )
+        store.evidence[shot.id] = shot
     return observation
 
 
@@ -331,6 +361,36 @@ def record_event(investigation_id: UUID, event: TimelineEvent) -> TimelineEvent:
 def record_evidence(investigation_id: UUID, evidence: Evidence) -> Evidence:
     get_investigation(investigation_id)
     store.evidence[evidence.id] = evidence
+
+    if evidence.type == EvidenceType.NETWORK:
+        # Persist network_events store entry
+        if not hasattr(store, "network_events"):
+            store.network_events = {}
+        raw_id = (evidence.payload or {}).get("network_event_id")
+        try:
+            event_id = UUID(str(raw_id)) if raw_id else evidence.id
+        except Exception:
+            event_id = evidence.id
+        store.network_events[event_id] = {
+            "id": str(event_id),
+            "investigation_id": str(investigation_id),
+            "timeline_event_id": (evidence.payload or {}).get("timeline_event_id"),
+            "method": (evidence.payload or {}).get("method"),
+            "url": evidence.url,
+            "status_code": (evidence.payload or {}).get("status_code"),
+            "body_shape": (evidence.payload or {}).get("body_shape") or {},
+            "request_headers": (evidence.payload or {}).get("request_headers") or {},
+            "response_headers": (evidence.payload or {}).get("response_headers") or {},
+            "evidence_id": str(evidence.id),
+        }
+        # Supporting evidence only — attach to existing rules
+        for rule in store.rules.values():
+            if rule.investigation_id != investigation_id:
+                continue
+            if evidence.id not in rule.evidence_ids:
+                rule.evidence_ids.append(evidence.id)
+                store.rules[rule.id] = rule
+
     return evidence
 
 

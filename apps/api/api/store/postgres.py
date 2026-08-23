@@ -28,6 +28,7 @@ from api.db.schema import (
     ExperimentRow,
     InvestigationRow,
     InvestigationTransitionRow,
+    NetworkEventRow,
     ObservationRow,
     RuleEvidenceRow,
     RuleExperimentRow,
@@ -56,10 +57,12 @@ class PostgresStore:
         self.verification_runs = _EntityMap(self, "experiment")
         self.evaluation_runs = _EntityMap(self, "evaluation_run")
         self.workflows = _EntityMap(self, "workflow")
+        self.network_events = _EntityMap(self, "network_event")
 
     def clear(self) -> None:
         with self._session_factory() as session:
             for table in (
+                NetworkEventRow,
                 WorkflowRow,
                 EvaluationRunRow,
                 RuleExperimentRow,
@@ -155,6 +158,9 @@ class PostgresStore:
         if kind == "workflow":
             row = session.get(WorkflowRow, entity_id)
             return mappers.workflow_from_row(row) if row else None
+        if kind == "network_event":
+            row = session.get(NetworkEventRow, entity_id)
+            return mappers.network_event_from_row(row) if row else None
         raise KeyError(kind)
 
     def _load_all(self, session: Session, kind: str) -> list:
@@ -211,6 +217,8 @@ class PostgresStore:
             ]
         if kind == "workflow":
             return [mappers.workflow_from_row(row) for row in session.scalars(select(WorkflowRow))]
+        if kind == "network_event":
+            return [mappers.network_event_from_row(row) for row in session.scalars(select(NetworkEventRow))]
         raise KeyError(kind)
 
     def _upsert(self, session: Session, kind: str, entity_id: UUID, value) -> None:
@@ -295,6 +303,9 @@ class PostgresStore:
 
             assert isinstance(value, Workflow)
             session.merge(mappers.workflow_to_row(value))
+            return
+        if kind == "network_event":
+            session.merge(mappers.network_event_to_row(value))
             return
         raise KeyError(kind)
 
