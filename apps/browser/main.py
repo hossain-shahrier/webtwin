@@ -72,7 +72,9 @@ def run_worker(api_url: str, headless: bool) -> None:
         job = pending[0]
         policy = job.feature_scope or os.environ.get("WEBTWIN_POLICY", "information_gain")
         os.environ["WEBTWIN_POLICY"] = policy
-        print(f"Claiming {job.id} → {job.target_url} (policy={policy})")
+        if job.spa_mode or (job.environment or "").lower().find("spa") >= 0:
+            os.environ["WEBTWIN_SPA_MODE"] = "1"
+        print(f"Claiming {job.id} → {job.target_url} (policy={policy} spa={job.spa_mode})")
         _run_one(
             target=job.target_url,
             api_url=api_url,

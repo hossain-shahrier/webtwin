@@ -22,6 +22,7 @@ from webtwin_core.models.session import InvestigationSession
 from webtwin_core.models.observation import ElementSnapshot, FormSnapshot, Observation
 from webtwin_core.models.rule_status import RuleStatus
 from webtwin_core.models.rules import BusinessRule, RuleCondition, RuleEffect
+from webtwin_core.models.spa import ElementIdentity, RouteSnapshot
 from webtwin_core.models.state import ApplicationState, FieldState
 from webtwin_core.models.workflow import Workflow, WorkflowStep
 
@@ -58,6 +59,8 @@ __all__ = [
     "TransitionEvent",
     "Workflow",
     "WorkflowStep",
+    "RouteSnapshot",
+    "ElementIdentity",
     "compute_state_diff",
     "infer_candidate_rules",
 ]

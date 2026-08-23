@@ -24,6 +24,7 @@ class NetworkEvent(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     investigation_id: UUID
     timeline_event_id: UUID | None = None
+    route_path: str | None = None
     method: str
     url: str
     status_code: int | None = None
@@ -68,6 +69,19 @@ class NetworkCollector:
     def __init__(self, investigation_id: UUID) -> None:
         self.investigation_id = investigation_id
         self.events: list[NetworkEvent] = []
+        self._current_route_path: str | None = None
+        self._nearest_timeline_event_id: UUID | None = None
+
+    def set_context(
+        self,
+        *,
+        route_path: str | None = None,
+        timeline_event_id: UUID | None = None,
+    ) -> None:
+        if route_path is not None:
+            self._current_route_path = route_path
+        if timeline_event_id is not None:
+            self._nearest_timeline_event_id = timeline_event_id
 
     def attach(self, page) -> None:
         def on_response(response) -> None:
@@ -92,6 +106,8 @@ class NetworkCollector:
 
             event = NetworkEvent(
                 investigation_id=self.investigation_id,
+                timeline_event_id=self._nearest_timeline_event_id,
+                route_path=self._current_route_path,
                 method=request.method,
                 url=response.url,
                 status_code=response.status,
@@ -102,6 +118,13 @@ class NetworkCollector:
             self.events.append(event)
 
         page.on("response", on_response)
+
+    def events_within_window_ms(self, *, before: datetime, window_ms: int = 3000) -> list[NetworkEvent]:
+        """Network events in the correlation window ending at `before`."""
+        from datetime import timedelta
+
+        start = before - timedelta(milliseconds=window_ms)
+        return [event for event in self.events if start <= event.captured_at <= before]
 
     def to_evidence(self, timeline_event_id: UUID | None = None) -> list[Evidence]:
         evidence_list: list[Evidence] = []
@@ -115,11 +138,13 @@ class NetworkCollector:
                 payload={
                     "network_event_id": str(event.id),
                     "timeline_event_id": str(event.timeline_event_id) if event.timeline_event_id else None,
+                    "route_path": event.route_path,
                     "method": event.method,
                     "status_code": event.status_code,
                     "body_shape": event.body_shape,
                     "request_headers": event.request_headers,
                     "response_headers": event.response_headers,
+                    "correlated": bool(event.timeline_event_id or event.route_path),
                 },
             )
             event.evidence_id = evidence.id

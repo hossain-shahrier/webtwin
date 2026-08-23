@@ -28,6 +28,9 @@ class EvaluationRun(BaseModel):
     discovery_recall: float | None = None
     discovery_f1: float | None = None
     verification_accuracy: float | None = None
+    settle_timeouts: int = 0
+    soft_nav_success_rate: float | None = None
+    routes_seen: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod

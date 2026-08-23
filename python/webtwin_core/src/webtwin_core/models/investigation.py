@@ -90,3 +90,4 @@ class Investigation(BaseModel):
     application_version: str | None = None
     environment: str | None = None
     role_scope: str | None = None
+    spa_mode: bool = False

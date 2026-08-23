@@ -38,6 +38,7 @@ export function createInvestigation(payload: {
   feature_scope?: string;
   application_version?: string;
   environment?: string;
+  spa_mode?: boolean;
 }): Promise<Investigation> {
   return request('/investigations', {
     method: 'POST',

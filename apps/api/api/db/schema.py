@@ -42,6 +42,7 @@ class InvestigationRow(Base):
     application_version: Mapped[str | None] = mapped_column(String(128))
     environment: Mapped[str | None] = mapped_column(String(128))
     role_scope: Mapped[str | None] = mapped_column(String(128))
+    spa_mode: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -92,6 +93,8 @@ class ObservationRow(Base):
     accessibility: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     visible_elements: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     interactive_elements: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    route: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    framework_hints: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
     elements: Mapped[list["ObservationElementRow"]] = relationship(
         back_populates="observation", cascade="all, delete-orphan"
@@ -120,6 +123,10 @@ class ObservationElementRow(Base):
     options: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     text: Mapped[str | None] = mapped_column(Text)
     input_type: Mapped[str | None] = mapped_column(String(64))
+    testid: Mapped[str | None] = mapped_column(Text)
+    stable_key: Mapped[str | None] = mapped_column(Text)
+    selector_candidates: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    in_shadow_dom: Mapped[bool] = mapped_column(Boolean, default=False)
 
     observation: Mapped[ObservationRow] = relationship(back_populates="elements")
 
@@ -339,6 +346,9 @@ class EvaluationRunRow(Base):
     discovery_recall: Mapped[float | None] = mapped_column(Float)
     discovery_f1: Mapped[float | None] = mapped_column(Float)
     verification_accuracy: Mapped[float | None] = mapped_column(Float)
+    settle_timeouts: Mapped[int] = mapped_column(Integer, default=0)
+    soft_nav_success_rate: Mapped[float | None] = mapped_column(Float)
+    routes_seen: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -350,6 +360,7 @@ class NetworkEventRow(Base):
         PGUUID(as_uuid=True), ForeignKey("investigations.id", ondelete="CASCADE"), index=True
     )
     timeline_event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), index=True)
+    route_path: Mapped[str | None] = mapped_column(Text)
     method: Mapped[str] = mapped_column(String(16), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
     status_code: Mapped[int | None] = mapped_column(Integer)

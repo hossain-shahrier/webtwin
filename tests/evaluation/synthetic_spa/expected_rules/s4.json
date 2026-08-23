@@ -1,0 +1,7 @@
+[
+  {
+    "id": "s4-visa-note",
+    "condition": { "field": "remote_ok", "operator": "equals", "value": "no" },
+    "effect": { "field": "visa_note", "visible": true }
+  }
+]

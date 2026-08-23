@@ -205,6 +205,36 @@ def infer_candidate_rules(
             )
         )
 
+    # Disabled / enabled transitions (e.g. submit button)
+    enabled_changes = [
+        change
+        for change in diff.changes
+        if change.attribute == "enabled" and change.before is True and change.after is False
+    ]
+    for disabled in enabled_changes:
+        field_name = disabled.field.lower()
+        if not any(token in field_name for token in ("submit", "save", "continue", "next", "send")):
+            continue
+        for trigger_change in primary_value_changes:
+            trigger = trigger_change.field
+            trigger_value = after_fields.get(trigger)
+            if trigger_value is None or trigger_value.value is None:
+                continue
+            rules.append(
+                BusinessRule(
+                    investigation_id=diff.investigation_id,
+                    name=f"{trigger} disables {disabled.field}",
+                    condition=RuleCondition(
+                        field=trigger,
+                        operator="equals",
+                        value=trigger_value.value,
+                    ),
+                    effect=RuleEffect(field=disabled.field, enabled=False),
+                    confidence=0.55,
+                    status=RuleStatus.CANDIDATE,
+                )
+            )
+
     # Deduplicate by signature
     seen: set[tuple] = set()
     unique: list[BusinessRule] = []
@@ -215,6 +245,7 @@ def infer_candidate_rules(
             rule.effect.field,
             rule.effect.visible,
             rule.effect.required,
+            getattr(rule.effect, "enabled", None),
         )
         if signature in seen:
             continue

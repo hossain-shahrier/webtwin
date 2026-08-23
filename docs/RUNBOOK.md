@@ -16,6 +16,10 @@
 | `WEBTWIN_APP_VERSION` | `synthetic-1` | Version metadata on investigations |
 | `WEBTWIN_ENVIRONMENT` | `eval` | Environment label |
 | `WEBTWIN_ROLE_SCOPE` | unset | Role tag for multi-session knowledge |
+| `WEBTWIN_SPA_MODE` | unset / `0` | Soft nav + SPA observation (`1` enables) |
+| `WEBTWIN_SETTLE_TIMEOUT_MS` | `8000` | Async settle budget after actions |
+| `WEBTWIN_SETTLE_STABLE_MS` | `200` | DOM quiet period for settle |
+| `WEBTWIN_STORAGE_ALLOWLIST` | `theme,locale,...` | SPA localStorage keys to capture (redacted) |
 
 ## Local (recommended)
 
@@ -25,6 +29,7 @@ pnpm nx run api:migrate
 pnpm nx run api:dev:postgres
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8060 pnpm nx serve web
 WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run evaluation:benchmark
+WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run evaluation:benchmark-spa
 WEBTWIN_API_URL=http://127.0.0.1:8060 WEBTWIN_EXPLORATION_POLICIES=random,first_unexplored,information_gain,llm pnpm nx run evaluation:compare-policies
 ```
 
@@ -56,7 +61,9 @@ WEBTWIN_EXPLORATION_POLICIES=random,first_unexplored,information_gain,llm \
   pnpm nx run evaluation:compare-policies
 ```
 
-## Tests
+## SPA mode
+
+See [SPA.md](./SPA.md) and staging [SPA_PILOT.md](./SPA_PILOT.md). Default remains multipage HTML (`spa_mode=false`).
 
 ```bash
 pnpm nx run webtwin-core:test

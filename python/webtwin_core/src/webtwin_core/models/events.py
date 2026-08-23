@@ -12,6 +12,8 @@ class TimelineEventType(StrEnum):
     SELECT = "select"
     SUBMIT = "submit"
     SCROLL = "scroll"
+    ROUTE = "route"
+    SETTLE = "settle"
     STATE_CHANGE = "state_change"
     VALIDATION = "validation"
     CHALLENGE = "challenge"

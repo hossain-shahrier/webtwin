@@ -30,12 +30,24 @@ class ExplorationState(BaseModel):
     tested_action_keys: list[str] = Field(default_factory=list)
     states_seen: list[str] = Field(default_factory=list)
     pages_seen_urls: list[str] = Field(default_factory=list)
+    routes_seen: list[str] = Field(default_factory=list)
+    settle_timeouts: int = 0
+    soft_nav_successes: int = 0
+    soft_nav_failures: int = 0
+    scrolls_used: int = 0
     actions_taken: int = 0
 
     def sync_inventory(self, inventory: ActionInventory) -> None:
         self.url = inventory.url
         if inventory.url and inventory.url not in self.pages_seen_urls:
             self.pages_seen_urls.append(inventory.url)
+        from urllib.parse import urlparse
+
+        if inventory.url:
+            parsed = urlparse(inventory.url)
+            route_key = f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path
+            if route_key and route_key not in self.routes_seen:
+                self.routes_seen.append(route_key)
         for action in inventory.actions:
             if action.type != ActionType.SELECT:
                 continue
@@ -55,6 +67,16 @@ class ExplorationState(BaseModel):
             self.tested_action_keys.append(action.key)
         if action.type == ActionType.NAVIGATE and value and value not in self.pages_seen_urls:
             self.pages_seen_urls.append(value)
+        if action.type == ActionType.ROUTE and value:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(value)
+            route_key = f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path
+            if route_key and route_key not in self.routes_seen:
+                self.routes_seen.append(route_key)
+            self.soft_nav_successes += 1
+        if action.type == ActionType.SCROLL:
+            self.scrolls_used += 1
         if action.type == ActionType.SELECT and value is not None:
             coverage = self.coverage.setdefault(
                 action.target,
@@ -88,12 +110,24 @@ class ExplorationState(BaseModel):
     def unexplored_navigate_actions(self, inventory: ActionInventory) -> list[tuple[ExploratoryAction, str]]:
         candidates: list[tuple[ExploratoryAction, str]] = []
         for action in inventory.actions:
-            if action.type != ActionType.NAVIGATE or not action.values:
+            if action.type not in {ActionType.NAVIGATE, ActionType.ROUTE} or not action.values:
                 continue
             value = action.values[0]
-            if value not in self.pages_seen_urls and action.key not in self.tested_action_keys:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(value)
+            route_key = f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path
+            seen = value in self.pages_seen_urls or route_key in self.routes_seen
+            if not seen and action.key not in self.tested_action_keys:
                 candidates.append((action, value))
         return candidates
+
+    def unexplored_route_actions(self, inventory: ActionInventory) -> list[tuple[ExploratoryAction, str]]:
+        return [
+            (action, value)
+            for action, value in self.unexplored_navigate_actions(inventory)
+            if action.type == ActionType.ROUTE
+        ]
 
     def exploration_coverage(self) -> float:
         if not self.coverage:

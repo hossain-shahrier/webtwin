@@ -1,0 +1,7 @@
+[
+  {
+    "id": "s3-bonus-hint",
+    "condition": { "field": "bonus_code", "operator": "equals", "value": "exec" },
+    "effect": { "field": "bonus_hint", "visible": true }
+  }
+]

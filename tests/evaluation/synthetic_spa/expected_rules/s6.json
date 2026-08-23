@@ -1,0 +1,7 @@
+[
+  {
+    "id": "s6-login-wall",
+    "condition": { "field": "unlock_sensitive", "operator": "clicked", "value": true },
+    "effect": { "field": "password", "visible": true }
+  }
+]

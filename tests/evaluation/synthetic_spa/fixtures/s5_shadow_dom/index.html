@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SPA S5 — Shadow DOM</title>
+    <style>
+      body { font-family: Georgia, serif; margin: 2rem; background: #f6f0e8; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <h1>Shadow field</h1>
+      <shadow-form></shadow-form>
+      <p id="shadow_alert" class="hidden" role="alert" data-testid="shadow_alert">Shadow value is secret</p>
+    </div>
+    <script>
+      class ShadowForm extends HTMLElement {
+        connectedCallback() {
+          const root = this.attachShadow({ mode: "open" });
+          root.innerHTML = `
+            <label for="secret_code">Secret code</label>
+            <select id="secret_code" name="secret_code" data-testid="secret_code">
+              <option value="public">Public</option>
+              <option value="secret">Secret</option>
+            </select>
+          `;
+          root.getElementById("secret_code").addEventListener("change", (e) => {
+            const alert = document.getElementById("shadow_alert");
+            alert.classList.toggle("hidden", e.target.value !== "secret");
+          });
+        }
+      }
+      customElements.define("shadow-form", ShadowForm);
+    </script>
+  </body>
+</html>

@@ -19,6 +19,13 @@
         "cwd": "."
       }
     },
+    "benchmark-spa": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "WEBTWIN_SPA_MODE=1 WEBTWIN_HEADLESS=true WEBTWIN_SETTLE_TIMEOUT_MS=5000 WEBTWIN_API_URL=http://127.0.0.1:8060 uv run --directory apps/browser python ../../tests/evaluation/run_benchmark_spa.py",
+        "cwd": "."
+      }
+    },
     "explore": {
       "executor": "nx:run-commands",
       "options": {

@@ -1,0 +1,7 @@
+[
+  {
+    "id": "s1-soft-route-smoke",
+    "condition": { "field": "notes", "operator": "equals", "value": "kept" },
+    "effect": { "field": "notes", "visible": true }
+  }
+]

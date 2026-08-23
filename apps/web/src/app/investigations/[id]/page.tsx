@@ -132,6 +132,14 @@ export default function InvestigationDetailPage() {
             <dt>Session status</dt>
             <dd>{session?.session_status ?? 'unknown'}</dd>
           </div>
+          <div>
+            <dt>SPA mode</dt>
+            <dd>{investigation.spa_mode ? 'enabled' : 'off'}</dd>
+          </div>
+          <div>
+            <dt>Environment</dt>
+            <dd>{investigation.environment ?? '—'}</dd>
+          </div>
         </dl>
       </section>
 
@@ -154,6 +162,22 @@ export default function InvestigationDetailPage() {
             <div>
               <dt>Safety violations</dt>
               <dd>{latestMetrics.safety_violations}</dd>
+            </div>
+            <div>
+              <dt>Settle timeouts</dt>
+              <dd>{latestMetrics.settle_timeouts ?? 0}</dd>
+            </div>
+            <div>
+              <dt>Soft-nav success</dt>
+              <dd>
+                {latestMetrics.soft_nav_success_rate != null
+                  ? latestMetrics.soft_nav_success_rate
+                  : '—'}
+              </dd>
+            </div>
+            <div>
+              <dt>Routes seen</dt>
+              <dd>{latestMetrics.routes_seen ?? 0}</dd>
             </div>
           </dl>
         </section>

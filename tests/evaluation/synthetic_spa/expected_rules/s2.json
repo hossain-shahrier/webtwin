@@ -1,0 +1,7 @@
+[
+  {
+    "id": "s2-validation-alert",
+    "condition": { "field": "validate", "operator": "clicked", "value": true },
+    "effect": { "field": "validation-alert", "visible": true }
+  }
+]

@@ -30,19 +30,25 @@ from browser.verification.runner import verify_rule_on_page
 
 
 def _set_field(page: Page, field: str, value: str) -> None:
-    locator = page.locator(f'#{field}, [name="{field}"]')
+    from browser.observer.settle import settle_after_action
+
+    locator = page.locator(
+        f'[data-testid="{field}"], #{field}, [name="{field}"], [aria-label="{field}"]'
+    )
     if value == "__click__":
-        locator.click()
-        page.wait_for_timeout(200)
+        locator.first.click()
+        settle_after_action(page)
         return
-    tag = locator.evaluate("(el) => el.tagName.toLowerCase()")
+    if locator.count() == 0:
+        raise RuntimeError(f"Field not found: {field}")
+    tag = locator.first.evaluate("(el) => el.tagName.toLowerCase()")
     if tag == "select":
-        locator.select_option(value)
-    elif tag == "button" or (tag == "input" and locator.get_attribute("type") in {"button", "submit"}):
-        locator.click()
+        locator.first.select_option(value)
+    elif tag == "button" or (tag == "input" and locator.first.get_attribute("type") in {"button", "submit"}):
+        locator.first.click()
     else:
-        locator.fill(value)
-    page.wait_for_timeout(150)
+        locator.first.fill(value)
+    settle_after_action(page)
 
 
 def _transition(
@@ -63,11 +69,10 @@ def _handle_auth(
     session_manager: SessionManager,
     session_store: SessionStore,
 ) -> None:
-    pause_metadata = session_manager.detect_pause(
-        page.url,
-        SessionManager.password_field_visible(page),
-        SessionManager.otp_field_visible(page),
-    )
+    has_password = SessionManager.password_field_visible(page)
+    has_otp = SessionManager.otp_field_visible(page)
+    has_sso = SessionManager.sso_button_visible(page)
+    pause_metadata = session_manager.detect_pause(page.url, has_password or has_sso, has_otp)
     if pause_metadata is not None:
         _transition(
             client,
@@ -106,6 +111,8 @@ def _exploration_loop(
     network=None,
 ) -> int:
     """Observe → plan → act → diff → rules until budget or coverage exhausted."""
+    from urllib.parse import urlparse
+
     _transition(client, investigation_id, TransitionEvent.BEGIN_EXPLORATION)
     _transition(client, investigation_id, TransitionEvent.CAPTURE_OBSERVATION)
 
@@ -122,6 +129,12 @@ def _exploration_loop(
             )
         )
     )
+    if network is not None:
+        route = before_observation.route
+        network.set_context(
+            route_path=route.path if route else urlparse(page.url).path,
+            timeline_event_id=timeline.events[-1].id if timeline.events else None,
+        )
 
     actions_taken = 1
     sequence = 2
@@ -135,14 +148,26 @@ def _exploration_loop(
         if investigation.status == InvestigationStatus.OBSERVING:
             _transition(client, investigation_id, TransitionEvent.BEGIN_EXPLORATION)
 
-        controller.apply_plan(page, plan)
+        settle = controller.apply_plan(page, plan)
         actions_taken += 1
+        event_type = TimelineEventType.ROUTE if plan.action.type.value == "route" else TimelineEventType.SELECT
+        if plan.action.type.value == "scroll":
+            event_type = TimelineEventType.SCROLL
         timeline.record(
             client.record_event(
                 TimelineEvent(
                     investigation_id=investigation_id,
-                    type=TimelineEventType.SELECT,
+                    type=event_type,
                     description=f"{plan.action.target}={plan.value} ({plan.reason})",
+                )
+            )
+        )
+        timeline.record(
+            client.record_event(
+                TimelineEvent(
+                    investigation_id=investigation_id,
+                    type=TimelineEventType.SETTLE,
+                    description=f"settle ok={settle.ok} {settle.reason} ({settle.elapsed_ms:.0f}ms)",
                 )
             )
         )
@@ -153,6 +178,13 @@ def _exploration_loop(
         client.record_observation(after_observation)
         after_state = client.record_state(after_observation.to_application_state(sequence=sequence))
         client.diff_states(investigation_id, before_state.id, after_state.id)
+
+        if network is not None:
+            route = after_observation.route
+            network.set_context(
+                route_path=route.path if route else urlparse(page.url).path,
+                timeline_event_id=timeline.events[-1].id if timeline.events else None,
+            )
 
         before_observation = after_observation
         before_state = after_state
@@ -176,19 +208,17 @@ def run_exploration_and_verification(
     budget: ExplorationBudget | None = None,
     seed: int | None = None,
     investigation_id: UUID | None = None,
+    spa_mode: bool | None = None,
 ) -> tuple[UUID, list[BusinessRule], list[BusinessRule], int, ExplorationMetrics]:
     from browser.observer.network import NetworkCollector
+    from browser.verification.runner import soft_return_to_route
     from urllib.parse import urlparse
+    from webtwin_core.spa import spa_mode_enabled
 
     client = ApiClient(api_base_url or os.environ.get("WEBTWIN_API_URL") or DEFAULT_API_URL)
     session_manager = SessionManager()
     session_store = SessionStore()
     timeline = TimelineRecorder()
-    controller = ExplorationController(
-        policy=policy,
-        budget=budget or ExplorationBudget(max_actions=int(os.environ.get("WEBTWIN_MAX_ACTIONS", "20"))),
-        seed=seed,
-    )
     candidate_rules: list[BusinessRule] = []
     verified_rules: list[BusinessRule] = []
     actions_taken = 0
@@ -211,6 +241,11 @@ def run_exploration_and_verification(
         if investigation.status == InvestigationStatus.INITIALIZING:
             _transition(client, investigation.id, TransitionEvent.INIT_COMPLETE)
     else:
+        use_spa = spa_mode if spa_mode is not None else (
+            spa_mode_enabled(None)
+            or "spa" in target_scope.lower()
+            or os.environ.get("WEBTWIN_SPA_MODE", "").lower() in {"1", "true", "yes"}
+        )
         investigation = client.create_investigation(
             Investigation(
                 goal=f"Explore business logic in {target_name}",
@@ -219,6 +254,7 @@ def run_exploration_and_verification(
                 application_version=os.environ.get("WEBTWIN_APP_VERSION", "synthetic-1"),
                 environment=os.environ.get("WEBTWIN_ENVIRONMENT", "eval"),
                 role_scope=os.environ.get("WEBTWIN_ROLE_SCOPE"),
+                spa_mode=use_spa,
                 goal_spec=InvestigationGoal(
                     type=InvestigationGoalType.DISCOVER_BUSINESS_LOGIC,
                     target=target_url,
@@ -230,6 +266,14 @@ def run_exploration_and_verification(
         client.upsert_session(investigation.id, auth_state=AuthState.UNKNOWN)
         _transition(client, investigation.id, TransitionEvent.START)
         _transition(client, investigation.id, TransitionEvent.INIT_COMPLETE)
+
+    use_spa = spa_mode if spa_mode is not None else spa_mode_enabled(investigation)
+    controller = ExplorationController(
+        policy=policy,
+        budget=budget or ExplorationBudget(max_actions=int(os.environ.get("WEBTWIN_MAX_ACTIONS", "20"))),
+        seed=seed,
+        spa_mode=use_spa,
+    )
 
     client.upsert_session(investigation.id, auth_state=AuthState.UNKNOWN)
 
@@ -251,11 +295,14 @@ def run_exploration_and_verification(
             controller.state.register_rules(candidate_rules)
             controller.known_rules = candidate_rules
 
-            # Return to the investigation target before verification experiments
-            page.goto(target_url)
-            page.wait_for_timeout(100)
+            # Return to baseline route before verification (soft when SPA)
+            if use_spa:
+                soft_return_to_route(page, "#/")
+            else:
+                page.goto(target_url)
+                page.wait_for_timeout(100)
             page_fields = {
-                element.name or element.selector.lstrip("#")
+                element.stable_key or element.name or element.selector.lstrip("#")
                 for element in capture_observation(page, investigation.id, with_screenshot=False).elements
             }
 
@@ -264,7 +311,14 @@ def run_exploration_and_verification(
                     verified_rules.append(rule)
                     continue
                 _transition(client, investigation.id, TransitionEvent.START_VERIFICATION)
-                updated = verify_rule_on_page(page, client, investigation.id, rule)
+                updated = verify_rule_on_page(
+                    page,
+                    client,
+                    investigation.id,
+                    rule,
+                    spa_mode=use_spa,
+                    baseline_route="#/" if use_spa else None,
+                )
                 verified_rules.append(updated)
                 actions_taken += 2
                 _transition(client, investigation.id, TransitionEvent.VERIFICATION_COMPLETE)
@@ -298,10 +352,15 @@ def run_exploration_and_verification(
     )
     from webtwin_core.evaluation.runs import EvaluationRun
 
-    client.record_metrics(
-        investigation.id,
-        EvaluationRun.from_exploration_metrics(investigation.id, exploration_metrics),
+    soft_total = controller.state.soft_nav_successes + controller.state.soft_nav_failures
+    soft_rate = (
+        controller.state.soft_nav_successes / soft_total if soft_total else (1.0 if use_spa else None)
     )
+    metrics_run = EvaluationRun.from_exploration_metrics(investigation.id, exploration_metrics)
+    metrics_run.settle_timeouts = controller.state.settle_timeouts
+    metrics_run.soft_nav_success_rate = soft_rate
+    metrics_run.routes_seen = len(controller.state.routes_seen)
+    client.record_metrics(investigation.id, metrics_run)
     return investigation.id, candidate_rules, verified_rules, actions_taken, exploration_metrics
 
 
@@ -310,9 +369,12 @@ def run_discovery_and_verification(
     discovery_actions: list[dict[str, str]],
     api_base_url: str | None = None,
     headless: bool = True,
+    *,
+    spa_mode: bool | None = None,
 ) -> tuple[UUID, list[BusinessRule], list[BusinessRule], int]:
     """Fixed-action discovery path (M1/M2 benchmark compatibility)."""
     from browser.observer.network import NetworkCollector
+    from webtwin_core.spa import spa_mode_enabled
 
     client = ApiClient(api_base_url or os.environ.get("WEBTWIN_API_URL") or DEFAULT_API_URL)
     session_manager = SessionManager()
@@ -322,6 +384,12 @@ def run_discovery_and_verification(
     candidate_rules: list[BusinessRule] = []
     verified_rules: list[BusinessRule] = []
 
+    use_spa = spa_mode if spa_mode is not None else (
+        "spa" in target.parent.name.lower()
+        or spa_mode_enabled(None)
+        or os.environ.get("WEBTWIN_SPA_MODE", "").lower() in {"1", "true", "yes"}
+    )
+
     investigation = client.create_investigation(
         Investigation(
             goal=f"Discover business logic in {target.name}",
@@ -330,6 +398,7 @@ def run_discovery_and_verification(
             application_version=os.environ.get("WEBTWIN_APP_VERSION", "synthetic-1"),
             environment=os.environ.get("WEBTWIN_ENVIRONMENT", "eval"),
             role_scope=os.environ.get("WEBTWIN_ROLE_SCOPE"),
+            spa_mode=use_spa,
             goal_spec=InvestigationGoal(
                 type=InvestigationGoalType.DISCOVER_BUSINESS_LOGIC,
                 target=target.as_uri(),
@@ -369,17 +438,34 @@ def run_discovery_and_verification(
                     )
                 )
             )
+            network.set_context(
+                route_path=before_observation.route.path if before_observation.route else "/",
+                timeline_event_id=timeline.events[-1].id if timeline.events else None,
+            )
 
             _transition(client, investigation.id, TransitionEvent.BEGIN_EXPLORATION)
             for action in discovery_actions:
-                _set_field(page, action["field"], action["value"])
+                if action.get("type") == "route":
+                    href = action.get("href") or action["value"]
+                    link = page.locator(
+                        f'a[href="{href}"], [data-testid="{action["field"]}"]'
+                    )
+                    if link.count() > 0:
+                        link.first.click()
+                    else:
+                        page.evaluate("(h) => { location.hash = h }", href if href.startswith("#") else f"#{href}")
+                    from browser.observer.settle import settle_after_action
+
+                    settle_after_action(page, expect_url_contains=href if href.startswith("#") else href)
+                else:
+                    _set_field(page, action["field"], action["value"])
                 actions_taken += 1
                 timeline.record(
                     client.record_event(
                         TimelineEvent(
                             investigation_id=investigation.id,
                             type=TimelineEventType.SELECT,
-                            description=f"Set {action['field']}={action['value']}",
+                            description=f"Set {action.get('field')}={action.get('value')}",
                         )
                     )
                 )
@@ -400,7 +486,9 @@ def run_discovery_and_verification(
 
             for rule in candidate_rules:
                 _transition(client, investigation.id, TransitionEvent.START_VERIFICATION)
-                updated = verify_rule_on_page(page, client, investigation.id, rule)
+                updated = verify_rule_on_page(
+                    page, client, investigation.id, rule, spa_mode=use_spa
+                )
                 verified_rules.append(updated)
                 actions_taken += 2
                 _transition(client, investigation.id, TransitionEvent.VERIFICATION_COMPLETE)

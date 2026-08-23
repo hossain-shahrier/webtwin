@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SPA S7 — Budget Routes</title>
+    <style>
+      body { font-family: Georgia, serif; margin: 0; background: #e9f1ec; min-height: 100vh; }
+      nav { display: flex; gap: 1rem; padding: 1rem; background: #1d2f28; }
+      nav a { color: #e9f1ec; }
+      main { padding: 1.5rem; }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <nav>
+        <a href="#/a" data-testid="nav-a">Route A</a>
+        <a href="#/b" data-testid="nav-b">Route B</a>
+        <a href="#/c" data-testid="nav-c">Route C</a>
+      </nav>
+      <main id="view"></main>
+    </div>
+    <script>
+      function render() {
+        const hash = location.hash || "#/a";
+        const view = document.getElementById("view");
+        if (hash === "#/b") {
+          view.innerHTML = `
+            <h1>Route B</h1>
+            <label for="band">Band</label>
+            <select id="band" name="band" data-testid="band">
+              <option value="ic">IC</option>
+              <option value="mgr">Manager</option>
+            </select>
+            <p id="mgr_perk" class="hidden" data-testid="mgr_perk">Manager perk</p>
+          `;
+          document.getElementById("band").addEventListener("change", (e) => {
+            document.getElementById("mgr_perk").classList.toggle("hidden", e.target.value !== "mgr");
+          });
+          return;
+        }
+        if (hash === "#/c") {
+          view.innerHTML = `<h1>Route C</h1><p>Coverage sink</p>`;
+          return;
+        }
+        view.innerHTML = `
+          <h1>Route A</h1>
+          <label for="region">Region</label>
+          <select id="region" name="region" data-testid="region">
+            <option value="us">US</option>
+            <option value="eu">EU</option>
+          </select>
+          <p id="gdpr_note" class="hidden" data-testid="gdpr_note">GDPR addendum</p>
+        `;
+        document.getElementById("region").addEventListener("change", (e) => {
+          document.getElementById("gdpr_note").classList.toggle("hidden", e.target.value !== "eu");
+        });
+      }
+      window.addEventListener("hashchange", render);
+      if (!location.hash) location.hash = "#/a";
+      render();
+    </script>
+  </body>
+</html>

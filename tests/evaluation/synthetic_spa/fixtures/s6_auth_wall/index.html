@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SPA S6 — Auth Wall Mid-Flow</title>
+    <style>
+      body { font-family: Georgia, serif; margin: 2rem; background: linear-gradient(150deg, #eceff4, #f7f1e8); }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <h1>Sensitive panel</h1>
+      <button type="button" id="unlock_sensitive" name="unlock_sensitive" data-testid="unlock_sensitive">
+        Unlock vault
+      </button>
+      <div id="login" class="hidden" data-testid="login-wall">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" data-testid="password" />
+        <button type="button" id="sso" data-testid="sso-login">Sign in with SSO</button>
+        <button type="button" id="unlock" name="unlock" data-testid="unlock">Continue</button>
+      </div>
+      <div id="app" class="hidden">
+        <label for="clearance">Clearance</label>
+        <select id="clearance" name="clearance" data-testid="clearance">
+          <option value="standard">Standard</option>
+          <option value="high">High</option>
+        </select>
+        <p id="vault_note" class="hidden" data-testid="vault_note">Vault access enabled</p>
+      </div>
+    </div>
+    <script>
+      document.getElementById("unlock_sensitive").addEventListener("click", () => {
+        document.getElementById("login").classList.remove("hidden");
+      });
+      document.getElementById("unlock").addEventListener("click", () => {
+        document.getElementById("login").classList.add("hidden");
+        document.getElementById("app").classList.remove("hidden");
+      });
+      document.getElementById("clearance").addEventListener("change", (e) => {
+        document.getElementById("vault_note").classList.toggle("hidden", e.target.value !== "high");
+      });
+    </script>
+  </body>
+</html>

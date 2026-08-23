@@ -4,6 +4,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+from webtwin_core.models.spa import ElementIdentity, RouteSnapshot
+
 
 class ElementSnapshot(BaseModel):
     selector: str
@@ -18,6 +20,11 @@ class ElementSnapshot(BaseModel):
     options: list[str] = Field(default_factory=list)
     text: str | None = None
     input_type: str | None = None
+    testid: str | None = None
+    stable_key: str | None = None
+    identity: ElementIdentity | None = None
+    selector_candidates: list[str] = Field(default_factory=list)
+    in_shadow_dom: bool = False
 
 
 class FormSnapshot(BaseModel):
@@ -39,6 +46,8 @@ class Observation(BaseModel):
     accessibility: dict[str, Any] = Field(default_factory=dict)
     screenshot_path: str | None = None
     html_length: int = 0
+    route: RouteSnapshot | None = None
+    framework_hints: dict[str, Any] = Field(default_factory=dict)
 
     def to_application_state(self, sequence: int) -> "ApplicationState":
         from webtwin_core.models.state import ApplicationState, FieldState
@@ -47,7 +56,7 @@ class Observation(BaseModel):
         for element in self.elements:
             fields.append(
                 FieldState(
-                    name=element.name or element.selector,
+                    name=element.stable_key or element.name or element.selector,
                     label=element.label,
                     value=element.value,
                     visible=element.visible,

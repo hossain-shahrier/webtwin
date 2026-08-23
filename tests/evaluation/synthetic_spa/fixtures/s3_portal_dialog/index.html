@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SPA S3 — Portal Dialog</title>
+    <style>
+      body { font-family: Georgia, serif; margin: 2rem; background: #f3efe6; }
+      .hidden { display: none !important; }
+      [data-portal] {
+        position: fixed; inset: 0; background: rgba(0,0,0,.35);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .dialog { background: #fff; padding: 1.5rem; min-width: 20rem; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <h1>Offer details</h1>
+      <button type="button" id="open_dialog" name="open_dialog" data-testid="open_dialog">Open dialog</button>
+      <div id="bonus-group" class="hidden">
+        <p id="bonus_hint" data-testid="bonus_hint">Bonus field unlocked</p>
+      </div>
+    </div>
+    <div data-portal id="portal-root" class="hidden"></div>
+    <script>
+      const portal = document.getElementById("portal-root");
+      document.getElementById("open_dialog").addEventListener("click", () => {
+        portal.classList.remove("hidden");
+        portal.innerHTML = `
+          <div class="dialog" role="dialog" aria-label="Bonus dialog">
+            <label for="bonus_code">Bonus code</label>
+            <select id="bonus_code" name="bonus_code" data-testid="bonus_code">
+              <option value="none">None</option>
+              <option value="exec">Executive</option>
+            </select>
+          </div>
+        `;
+        document.getElementById("bonus_code").addEventListener("change", (e) => {
+          const show = e.target.value === "exec";
+          document.getElementById("bonus-group").classList.toggle("hidden", !show);
+        });
+      });
+    </script>
+  </body>
+</html>

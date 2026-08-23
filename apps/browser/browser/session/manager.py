@@ -29,6 +29,9 @@ class SessionManager:
     def detect_pause(self, url: str, has_password_field: bool, has_otp_field: bool = False) -> AuthPauseMetadata | None:
         if not has_password_field and not has_otp_field:
             if url.lower().startswith("file:"):
+                # SPA fixtures may still show login walls on file://
+                if self.sso_button_visible_static(url):
+                    return AuthPauseMetadata(reason=AuthPauseReason.LOGIN_REQUIRED, resume_allowed=True, url=url)
                 return None
             lowered = url.lower()
             if any(hint in lowered for hint in self.BLOCK_HINTS):
@@ -41,6 +44,18 @@ class SessionManager:
         if has_otp_field:
             return AuthPauseMetadata(reason=AuthPauseReason.MFA_REQUIRED, resume_allowed=True, url=url)
         return AuthPauseMetadata(reason=AuthPauseReason.LOGIN_REQUIRED, resume_allowed=True, url=url)
+
+    @staticmethod
+    def sso_button_visible_static(_url: str) -> bool:
+        return False
+
+    @staticmethod
+    def sso_button_visible(page) -> bool:
+        locator = page.locator(
+            'button:has-text("SSO"), button:has-text("Sign in with"), '
+            '[data-testid="sso-login"], a:has-text("Sign in with")'
+        )
+        return locator.count() > 0 and locator.first.is_visible()
 
     @staticmethod
     def password_field_visible(page) -> bool:

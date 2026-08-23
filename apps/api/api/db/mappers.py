@@ -72,6 +72,7 @@ def investigation_to_row(model: Investigation) -> InvestigationRow:
         application_version=model.application_version,
         environment=model.environment,
         role_scope=model.role_scope,
+        spa_mode=model.spa_mode,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )
@@ -94,6 +95,7 @@ def investigation_from_row(row: InvestigationRow) -> Investigation:
         "application_version": row.application_version,
         "environment": row.environment,
         "role_scope": row.role_scope,
+        "spa_mode": bool(getattr(row, "spa_mode", False)),
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }
@@ -170,6 +172,8 @@ def observation_to_row(model: Observation) -> ObservationRow:
         accessibility=_jsonable(model.accessibility) or {},
         visible_elements=list(model.visible_elements),
         interactive_elements=list(model.interactive_elements),
+        route=_jsonable(model.route.model_dump(mode="json")) if model.route else None,
+        framework_hints=_jsonable(model.framework_hints) or {},
         elements=[
             ObservationElementRow(
                 selector=element.selector,
@@ -184,6 +188,10 @@ def observation_to_row(model: Observation) -> ObservationRow:
                 options=list(element.options),
                 text=element.text,
                 input_type=element.input_type,
+                testid=element.testid,
+                stable_key=element.stable_key,
+                selector_candidates=list(element.selector_candidates),
+                in_shadow_dom=element.in_shadow_dom,
             )
             for element in model.elements
         ],
@@ -199,6 +207,11 @@ def observation_to_row(model: Observation) -> ObservationRow:
 
 
 def observation_from_row(row: ObservationRow) -> Observation:
+    from webtwin_core.models.spa import RouteSnapshot
+
+    route = None
+    if getattr(row, "route", None):
+        route = RouteSnapshot.model_validate(row.route)
     return Observation(
         id=row.id,
         investigation_id=row.investigation_id,
@@ -210,6 +223,8 @@ def observation_from_row(row: ObservationRow) -> Observation:
         accessibility=row.accessibility or {},
         visible_elements=list(row.visible_elements or []),
         interactive_elements=list(row.interactive_elements or []),
+        route=route,
+        framework_hints=getattr(row, "framework_hints", None) or {},
         elements=[
             ElementSnapshot(
                 selector=element.selector,
@@ -224,6 +239,10 @@ def observation_from_row(row: ObservationRow) -> Observation:
                 options=list(element.options or []),
                 text=element.text,
                 input_type=element.input_type,
+                testid=getattr(element, "testid", None),
+                stable_key=getattr(element, "stable_key", None),
+                selector_candidates=list(getattr(element, "selector_candidates", None) or []),
+                in_shadow_dom=bool(getattr(element, "in_shadow_dom", False)),
             )
             for element in row.elements
         ],
@@ -516,6 +535,9 @@ def evaluation_run_to_row(model: EvaluationRun) -> EvaluationRunRow:
         discovery_recall=model.discovery_recall,
         discovery_f1=model.discovery_f1,
         verification_accuracy=model.verification_accuracy,
+        settle_timeouts=getattr(model, "settle_timeouts", 0) or 0,
+        soft_nav_success_rate=getattr(model, "soft_nav_success_rate", None),
+        routes_seen=getattr(model, "routes_seen", 0) or 0,
         created_at=model.created_at,
     )
 
@@ -540,6 +562,9 @@ def evaluation_run_from_row(row: EvaluationRunRow) -> EvaluationRun:
             "discovery_recall": row.discovery_recall,
             "discovery_f1": row.discovery_f1,
             "verification_accuracy": row.verification_accuracy,
+            "settle_timeouts": getattr(row, "settle_timeouts", 0) or 0,
+            "soft_nav_success_rate": getattr(row, "soft_nav_success_rate", None),
+            "routes_seen": getattr(row, "routes_seen", 0) or 0,
             "created_at": row.created_at,
         }
     )

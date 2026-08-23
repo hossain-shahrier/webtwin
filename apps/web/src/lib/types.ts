@@ -43,6 +43,8 @@ export interface Investigation {
   status: InvestigationStatus;
   application_name?: string | null;
   feature_scope?: string | null;
+  environment?: string | null;
+  spa_mode?: boolean;
   auth_pause?: AuthPauseMetadata | null;
   failure_reason?: string | null;
   blocked_reason?: string | null;
@@ -123,5 +125,8 @@ export interface EvaluationRun {
   blocked_unsafe_actions: number;
   pages_seen: number;
   discovery_f1?: number | null;
+  settle_timeouts?: number;
+  soft_nav_success_rate?: number | null;
+  routes_seen?: number;
   created_at: string;
 }

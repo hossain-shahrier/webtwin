@@ -15,6 +15,8 @@ class ActionType(StrEnum):
     INPUT = "input"
     CLICK = "click"
     NAVIGATE = "navigate"
+    ROUTE = "route"
+    SCROLL = "scroll"
 
 
 class SafetyClass(StrEnum):
@@ -57,15 +59,24 @@ def _target_name(element: ElementSnapshot) -> str:
 
 
 def _same_origin(base_url: str, href: str) -> bool:
-    if href.startswith("#") or href.startswith("javascript:"):
+    if href.startswith("javascript:"):
         return False
+    # In-app hash / soft routes stay same-document (SPA soft-nav)
+    if href.startswith("#"):
+        return True
     absolute = urljoin(base_url, href)
-    return urlparse(base_url).netloc == urlparse(absolute).netloc or absolute.startswith("file:")
+    base = urlparse(base_url)
+    target = urlparse(absolute)
+    if absolute.startswith("file:") or base.scheme == "file":
+        return True
+    return base.netloc == target.netloc
 
 
 def build_action_inventory(
     observation: Observation,
     goal: InvestigationGoal | None = None,
+    *,
+    spa_mode: bool = False,
 ) -> ActionInventory:
     """Derive candidate actions from an observation — no LLM."""
     actions: list[ExploratoryAction] = []
@@ -74,20 +85,39 @@ def build_action_inventory(
     for element in observation.elements:
         if not element.visible or not element.enabled:
             continue
-        target = _target_name(element)
+        target = element.stable_key or _target_name(element)
         if element.tag == "a" and element.value:
-            if not _same_origin(observation.url, element.value):
+            href = element.value
+            if href.startswith("javascript:"):
                 continue
-            actions.append(
-                ExploratoryAction(
-                    type=ActionType.NAVIGATE,
-                    target=target or element.value,
-                    selector=element.selector,
-                    values=[urljoin(observation.url, element.value)],
-                    label=element.text or element.label,
-                    metadata={"href": element.value},
-                )
+            if not _same_origin(observation.url, href):
+                continue
+            absolute = href if href.startswith("#") else urljoin(observation.url, href)
+            soft = spa_mode and (
+                href.startswith("#") or href.startswith("/") or bool(element.testid)
             )
+            if soft:
+                actions.append(
+                    ExploratoryAction(
+                        type=ActionType.ROUTE,
+                        target=target or href,
+                        selector=element.selector,
+                        values=[absolute],
+                        label=element.text or element.label,
+                        metadata={"href": href, "nav": "soft"},
+                    )
+                )
+            else:
+                actions.append(
+                    ExploratoryAction(
+                        type=ActionType.NAVIGATE,
+                        target=target or href,
+                        selector=element.selector,
+                        values=[urljoin(observation.url, href)],
+                        label=element.text or element.label,
+                        metadata={"href": href},
+                    )
+                )
             continue
         if element.tag == "select":
             actions.append(
@@ -101,9 +131,8 @@ def build_action_inventory(
             )
         elif element.tag in {"input", "textarea"}:
             input_type = (element.input_type or "text").lower()
-            if input_type in {"hidden", "submit", "button", "reset", "file"}:
+            if input_type in {"hidden", "submit", "button", "reset", "file", "password"}:
                 continue
-            # Goal-directed: prefer inputs matching scope; still include all for inventory
             actions.append(
                 ExploratoryAction(
                     type=ActionType.INPUT,
@@ -119,14 +148,33 @@ def build_action_inventory(
         elif element.tag == "button" or (
             element.tag == "input" and (element.input_type or "").lower() in {"submit", "button"}
         ):
+            label_l = (element.text or element.label or "").lower()
+            safety = SafetyClass.SAFE
+            if any(token in label_l for token in ("delete", "remove", "destroy")):
+                safety = SafetyClass.DESTRUCTIVE
+            elif any(token in label_l for token in ("submit", "save", "send", "pay")):
+                safety = SafetyClass.CAUTION
             actions.append(
                 ExploratoryAction(
                     type=ActionType.CLICK,
                     target=target or (element.text or "button").lower().replace(" ", "_"),
                     selector=element.selector,
                     label=element.text or element.label,
+                    safety=safety,
                 )
             )
+
+    if spa_mode:
+        actions.append(
+            ExploratoryAction(
+                type=ActionType.SCROLL,
+                target="viewport",
+                selector="body",
+                values=["down"],
+                label="scroll down",
+                metadata={"nav": "scroll"},
+            )
+        )
 
     if scope:
         actions.sort(key=lambda action: 0 if scope in action.target.lower() else 1)

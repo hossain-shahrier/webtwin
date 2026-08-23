@@ -14,6 +14,7 @@ export default function InvestigationsPage() {
   const [goal, setGoal] = useState('Discover business logic');
   const [targetUrl, setTargetUrl] = useState('file:///tmp/fixture.html');
   const [policy, setPolicy] = useState('information_gain');
+  const [spaMode, setSpaMode] = useState(false);
 
   const refresh = () =>
     listInvestigations()
@@ -46,6 +47,8 @@ export default function InvestigationsPage() {
                 goal: `${goal} [${policy}]`,
                 target_url: targetUrl,
                 feature_scope: policy,
+                spa_mode: spaMode,
+                environment: spaMode ? 'spa' : 'eval',
               });
               router.push(`/investigations/${created.id}`);
             } catch (err) {
@@ -75,6 +78,14 @@ export default function InvestigationsPage() {
             <option value="information_gain">information_gain</option>
             <option value="llm">llm</option>
           </select>
+          <label className={styles.empty}>
+            <input
+              type="checkbox"
+              checked={spaMode}
+              onChange={(event) => setSpaMode(event.target.checked)}
+            />{' '}
+            SPA mode (soft nav)
+          </label>
           <button className={styles.button} type="submit">
             Create
           </button>
@@ -98,6 +109,9 @@ export default function InvestigationsPage() {
                 </div>
                 <p className={styles.goal}>{investigation.goal}</p>
                 <p className={styles.target}>{investigation.target_url}</p>
+                {investigation.spa_mode ? (
+                  <p className={styles.empty}>spa_mode</p>
+                ) : null}
               </Link>
             </li>
           ))}

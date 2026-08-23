@@ -49,10 +49,31 @@ def choose_first_unexplored(
     allow_caution: bool = False,
 ) -> PlannedAction | None:
     inventory = _automatable_inventory(inventory, allow_caution=allow_caution)
+    # SPA bias: cover unexplored soft routes before fields on current route
+    routes = state.unexplored_route_actions(inventory)
+    if routes:
+        action, value = routes[0]
+        return PlannedAction(
+            action=action,
+            value=value,
+            reason=f"first unexplored route {action.target}",
+            expected_information_gain=2.5,
+        )
     candidates = state.unexplored_select_actions(inventory)
     if not candidates:
         nav = state.unexplored_navigate_actions(inventory)
         if not nav:
+            # Optional scroll when fields may be offscreen
+            for action in inventory.actions:
+                if action.type == ActionType.SCROLL and action.key not in state.tested_action_keys:
+                    if state.scrolls_used >= 3:
+                        break
+                    return PlannedAction(
+                        action=action,
+                        value="down",
+                        reason="scroll to reveal offscreen fields",
+                        expected_information_gain=0.5,
+                    )
             return None
         action, value = nav[0]
         return PlannedAction(
@@ -77,10 +98,29 @@ def choose_max_information_gain(
     allow_caution: bool = False,
 ) -> PlannedAction | None:
     inventory = _automatable_inventory(inventory, allow_caution=allow_caution)
+    routes = state.unexplored_route_actions(inventory)
+    if routes:
+        action, value = routes[0]
+        return PlannedAction(
+            action=action,
+            value=value,
+            reason=f"unexplored route {action.target}",
+            expected_information_gain=3.0,
+        )
     candidates = state.unexplored_select_actions(inventory)
     if not candidates:
         nav = state.unexplored_navigate_actions(inventory)
         if not nav:
+            for action in inventory.actions:
+                if action.type == ActionType.SCROLL and action.key not in state.tested_action_keys:
+                    if state.scrolls_used >= 3:
+                        break
+                    return PlannedAction(
+                        action=action,
+                        value="down",
+                        reason="scroll for information gain",
+                        expected_information_gain=0.5,
+                    )
             return None
         action, value = nav[0]
         return PlannedAction(

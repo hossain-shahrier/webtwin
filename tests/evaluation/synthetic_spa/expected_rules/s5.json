@@ -1,0 +1,7 @@
+[
+  {
+    "id": "s5-shadow-alert",
+    "condition": { "field": "secret_code", "operator": "equals", "value": "secret" },
+    "effect": { "field": "shadow_alert", "visible": true }
+  }
+]

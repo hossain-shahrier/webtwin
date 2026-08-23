@@ -11,9 +11,11 @@ class ExplorationBudget(BaseModel):
     max_duration_seconds: int = 600
     max_pages: int = 20
     max_experiments: int = 50
+    max_scrolls: int = 10
     actions_used: int = 0
     pages_seen: int = 0
     experiments_used: int = 0
+    scrolls_used: int = 0
     started_at_monotonic: float | None = None
 
     def remaining_actions(self) -> int:
@@ -26,9 +28,15 @@ class ExplorationBudget(BaseModel):
             return True
         if self.pages_seen >= self.max_pages:
             return True
+        if self.scrolls_used >= self.max_scrolls:
+            # scrolls alone don't exhaust — only when combined with action budget
+            pass
         if elapsed_seconds >= self.max_duration_seconds:
             return True
         return False
 
     def consume_action(self) -> None:
         self.actions_used += 1
+
+    def consume_scroll(self) -> None:
+        self.scrolls_used += 1

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SPA S2 — Async Validation</title>
+    <style>
+      body { font-family: Georgia, serif; margin: 2rem; background: linear-gradient(140deg, #eef2f7, #f8f4ec); }
+      .hidden { display: none; }
+      #validation-alert { color: #8b1e1e; margin-top: 1rem; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <h1>Employee ID Check</h1>
+      <label for="employee_id">Employee ID</label>
+      <input id="employee_id" name="employee_id" data-testid="employee_id" />
+      <button type="button" id="validate" name="validate" data-testid="validate">Validate</button>
+      <div id="validation-alert" class="hidden" role="alert" data-testid="validation-alert">Invalid employee id</div>
+    </div>
+    <script>
+      const alertEl = document.getElementById("validation-alert");
+      document.getElementById("validate").addEventListener("click", async () => {
+        alertEl.classList.add("hidden");
+        const id = document.getElementById("employee_id").value;
+        // Simulate async fetch (data URL JSON)
+        await fetch("data:application/json,{\"ok\":false,\"code\":\"INVALID\"}");
+        await new Promise((r) => setTimeout(r, 80));
+        if (id !== "GOOD") {
+          alertEl.classList.remove("hidden");
+        }
+      });
+    </script>
+  </body>
+</html>
