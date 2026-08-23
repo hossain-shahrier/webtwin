@@ -52,6 +52,17 @@ def generate_verification_experiments(rule: BusinessRule) -> list[VerificationEx
     if rule.effect.enabled is not None:
         effect_expectation["enabled"] = rule.effect.enabled
 
+    if rule.condition.operator == "clicked":
+        experiments.append(
+            VerificationExperiment(
+                rule_id=rule.id,
+                description=f"When {trigger} is clicked, {effect_field} should match rule effect",
+                set_fields={trigger: "__click__"},
+                expectations={effect_field: effect_expectation},
+            )
+        )
+        return experiments
+
     experiments.append(
         VerificationExperiment(
             rule_id=rule.id,

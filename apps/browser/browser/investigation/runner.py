@@ -31,9 +31,15 @@ from browser.verification.runner import verify_rule_on_page
 
 def _set_field(page: Page, field: str, value: str) -> None:
     locator = page.locator(f'#{field}, [name="{field}"]')
+    if value == "__click__":
+        locator.click()
+        page.wait_for_timeout(200)
+        return
     tag = locator.evaluate("(el) => el.tagName.toLowerCase()")
     if tag == "select":
         locator.select_option(value)
+    elif tag == "button" or (tag == "input" and locator.get_attribute("type") in {"button", "submit"}):
+        locator.click()
     else:
         locator.fill(value)
     page.wait_for_timeout(150)
@@ -97,6 +103,7 @@ def _exploration_loop(
     investigation_id: UUID,
     controller: ExplorationController,
     timeline: TimelineRecorder,
+    network=None,
 ) -> int:
     """Observe → plan → act → diff → rules until budget or coverage exhausted."""
     _transition(client, investigation_id, TransitionEvent.BEGIN_EXPLORATION)
@@ -151,6 +158,10 @@ def _exploration_loop(
         before_state = after_state
         sequence += 1
 
+    if network is not None:
+        for evidence in network.to_evidence():
+            client.record_evidence(evidence)
+
     _transition(client, investigation_id, TransitionEvent.GENERATE_RULES)
     return actions_taken
 
@@ -164,6 +175,8 @@ def run_exploration_and_verification(
     budget: ExplorationBudget | None = None,
     seed: int | None = None,
 ) -> tuple[UUID, list[BusinessRule], list[BusinessRule], int, ExplorationMetrics]:
+    from browser.observer.network import NetworkCollector
+
     client = ApiClient(api_base_url or os.environ.get("WEBTWIN_API_URL") or DEFAULT_API_URL)
     session_manager = SessionManager()
     session_store = SessionStore()
@@ -182,6 +195,9 @@ def run_exploration_and_verification(
             goal=f"Explore business logic in {target.name}",
             target_url=target.as_uri(),
             feature_scope=target.parent.name,
+            application_version=os.environ.get("WEBTWIN_APP_VERSION", "synthetic-1"),
+            environment=os.environ.get("WEBTWIN_ENVIRONMENT", "eval"),
+            role_scope=os.environ.get("WEBTWIN_ROLE_SCOPE"),
             goal_spec=InvestigationGoal(
                 type=InvestigationGoalType.DISCOVER_BUSINESS_LOGIC,
                 target=target.as_uri(),
@@ -199,14 +215,23 @@ def run_exploration_and_verification(
         browser = playwright.chromium.launch(headless=headless)
         context = session_store.new_context(browser, investigation.id)
         page = context.new_page()
+        network = NetworkCollector(investigation.id)
+        network.attach(page)
 
         try:
             page.goto(target.as_uri())
             _handle_auth(page, context, client, investigation.id, session_manager, session_store)
-            actions_taken = _exploration_loop(page, client, investigation.id, controller, timeline)
+            actions_taken = _exploration_loop(
+                page, client, investigation.id, controller, timeline, network=network
+            )
 
             candidate_rules = _fetch_rules(client, investigation.id)
             controller.state.register_rules(candidate_rules)
+            controller.known_rules = candidate_rules
+
+            # Return to the investigation target before verification experiments
+            page.goto(target.as_uri())
+            page.wait_for_timeout(100)
 
             for rule in candidate_rules:
                 _transition(client, investigation.id, TransitionEvent.START_VERIFICATION)
@@ -230,6 +255,7 @@ def run_exploration_and_verification(
             context.close()
             browser.close()
 
+    pages_seen = len(controller.state.pages_seen_urls) or len(controller.state.states_seen) or 1
     verified_count = sum(1 for rule in verified_rules if rule.status.value == "verified")
     exploration_metrics = compute_exploration_metrics(
         policy=policy,
@@ -239,6 +265,13 @@ def run_exploration_and_verification(
         actions_taken=actions_taken,
         safety_violations=controller.safety_violations,
         blocked_unsafe_actions=controller.blocked_unsafe_actions,
+        pages_seen=pages_seen,
+    )
+    from webtwin_core.evaluation.runs import EvaluationRun
+
+    client.record_metrics(
+        investigation.id,
+        EvaluationRun.from_exploration_metrics(investigation.id, exploration_metrics),
     )
     return investigation.id, candidate_rules, verified_rules, actions_taken, exploration_metrics
 
@@ -250,6 +283,8 @@ def run_discovery_and_verification(
     headless: bool = True,
 ) -> tuple[UUID, list[BusinessRule], list[BusinessRule], int]:
     """Fixed-action discovery path (M1/M2 benchmark compatibility)."""
+    from browser.observer.network import NetworkCollector
+
     client = ApiClient(api_base_url or os.environ.get("WEBTWIN_API_URL") or DEFAULT_API_URL)
     session_manager = SessionManager()
     session_store = SessionStore()
@@ -263,6 +298,9 @@ def run_discovery_and_verification(
             goal=f"Discover business logic in {target.name}",
             target_url=target.as_uri(),
             feature_scope=target.parent.name,
+            application_version=os.environ.get("WEBTWIN_APP_VERSION", "synthetic-1"),
+            environment=os.environ.get("WEBTWIN_ENVIRONMENT", "eval"),
+            role_scope=os.environ.get("WEBTWIN_ROLE_SCOPE"),
             goal_spec=InvestigationGoal(
                 type=InvestigationGoalType.DISCOVER_BUSINESS_LOGIC,
                 target=target.as_uri(),
@@ -280,6 +318,8 @@ def run_discovery_and_verification(
         browser = playwright.chromium.launch(headless=headless)
         context = session_store.new_context(browser, investigation.id)
         page = context.new_page()
+        network = NetworkCollector(investigation.id)
+        network.attach(page)
 
         try:
             page.goto(target.as_uri())
@@ -320,6 +360,9 @@ def run_discovery_and_verification(
             client.record_observation(after_observation)
             after_state = client.record_state(after_observation.to_application_state(sequence=2))
             client.diff_states(investigation.id, before_state.id, after_state.id)
+
+            for evidence in network.to_evidence():
+                client.record_evidence(evidence)
 
             _transition(client, investigation.id, TransitionEvent.GENERATE_RULES)
             candidate_rules = _fetch_rules(client, investigation.id)

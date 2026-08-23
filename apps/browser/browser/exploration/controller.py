@@ -12,11 +12,11 @@ from webtwin_core.exploration import (
     PolicyName,
     SafetyClass,
     apply_safety,
-    choose_next_action,
     classify_action_safety,
     filter_automatable,
 )
 from webtwin_core.models import Observation
+from webtwin_core.planning import resolve_planner
 
 from browser.exploration.action_space import inventory_from_observation
 from browser.observer.snapshot import capture_observation
@@ -28,6 +28,8 @@ def execute_planned_action(page: Page, plan: PlannedAction) -> None:
         locator.select_option(plan.value)
     elif plan.action.type.value == "input" and plan.value is not None:
         locator.fill(plan.value)
+    elif plan.action.type.value == "navigate" and plan.value is not None:
+        page.goto(plan.value)
     elif plan.action.type.value == "click":
         locator.click()
     page.wait_for_timeout(150)
@@ -49,6 +51,8 @@ class ExplorationController:
         self.plans: list[PlannedAction] = []
         self.safety_violations = 0
         self._blocked_action_ids: set[str] = set()
+        self.planner = resolve_planner(policy)
+        self.known_rules: list = []
 
     @property
     def blocked_unsafe_actions(self) -> int:
@@ -61,11 +65,10 @@ class ExplorationController:
         inventory = inventory_from_observation(observation)
         self.state.sync_inventory(inventory)
         self._count_blocked_unsafe(inventory)
-        return choose_next_action(
-            self.policy,
+        return self.planner.choose_next_action(
             self.state,
             inventory,
-            rng=self._rng,
+            known_rules=self.known_rules,
         )
 
     def plan_next(self, page: Page, investigation_id: UUID) -> PlannedAction | None:

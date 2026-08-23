@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Hidden Logic</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Bonus Eligibility (opaque)</h1>
+    <form id="bonus-form">
+      <label for="tenure_years">Tenure (years)</label>
+      <select id="tenure_years" name="tenure_years">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="5">5</option>
+      </select>
+
+      <label for="rating">Last Rating</label>
+      <select id="rating" name="rating">
+        <option value="meets">Meets</option>
+        <option value="exceeds">Exceeds</option>
+      </select>
+
+      <div id="bonus_panel" class="hidden">
+        <label for="bonus_code">Bonus Code</label>
+        <input id="bonus_code" name="bonus_code" type="text" />
+      </div>
+    </form>
+
+    <script>
+      // Hidden rule: bonus only when tenure >= 3 AND rating === exceeds
+      const tenure = document.getElementById("tenure_years");
+      const rating = document.getElementById("rating");
+      const bonusPanel = document.getElementById("bonus_panel");
+
+      function sync() {
+        const eligible = Number(tenure.value) >= 3 && rating.value === "exceeds";
+        bonusPanel.classList.toggle("hidden", !eligible);
+      }
+
+      tenure.addEventListener("change", sync);
+      rating.addEventListener("change", sync);
+      sync();
+    </script>
+  </body>
+</html>

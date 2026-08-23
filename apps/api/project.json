@@ -42,6 +42,13 @@
         "cwd": "apps/api"
       }
     },
+    "sync-kg": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "PYTHONPATH=. WEBTWIN_STORE=${WEBTWIN_STORE:-postgres} uv run python scripts/sync_kg.py",
+        "cwd": "apps/api"
+      }
+    },
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {

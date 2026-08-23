@@ -77,3 +77,51 @@ export interface InvestigationTransition {
   reason?: string | null;
   occurred_at: string;
 }
+
+export interface TimelineEvent {
+  id: string;
+  investigation_id: string;
+  type: string;
+  description: string;
+  occurred_at: string;
+}
+
+export interface BusinessRule {
+  id: string;
+  investigation_id: string;
+  name: string;
+  status: string;
+  confidence: number;
+  condition: { field: string; operator: string; value?: string | number | boolean | null };
+  effect: { field: string; visible?: boolean | null; required?: boolean | null };
+  evidence_ids: string[];
+}
+
+export interface Evidence {
+  id: string;
+  investigation_id: string;
+  type: string;
+  sensitivity: string;
+  confidence: number;
+  url?: string | null;
+  content_hash?: string | null;
+  payload: Record<string, unknown>;
+  captured_at: string;
+}
+
+export interface EvaluationRun {
+  id: string;
+  investigation_id: string;
+  policy: string;
+  exploration_coverage: number;
+  state_coverage: number;
+  actions_taken: number;
+  candidate_rules: number;
+  verified_rules: number;
+  rules_per_action: number;
+  safety_violations: number;
+  blocked_unsafe_actions: number;
+  pages_seen: number;
+  discovery_f1?: number | null;
+  created_at: string;
+}

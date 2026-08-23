@@ -17,6 +17,9 @@ def main() -> None:
         "ALTER TABLE observation_elements ADD COLUMN IF NOT EXISTS options JSONB DEFAULT '[]'::jsonb",
         "ALTER TABLE observation_elements ADD COLUMN IF NOT EXISTS text TEXT",
         "ALTER TABLE observation_elements ADD COLUMN IF NOT EXISTS input_type VARCHAR(64)",
+        "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS application_version VARCHAR(128)",
+        "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS environment VARCHAR(128)",
+        "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS role_scope VARCHAR(128)",
     ]
     with engine.begin() as connection:
         for statement in statements:

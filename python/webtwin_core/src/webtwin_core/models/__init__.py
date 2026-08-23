@@ -23,6 +23,7 @@ from webtwin_core.models.observation import ElementSnapshot, FormSnapshot, Obser
 from webtwin_core.models.rule_status import RuleStatus
 from webtwin_core.models.rules import BusinessRule, RuleCondition, RuleEffect
 from webtwin_core.models.state import ApplicationState, FieldState
+from webtwin_core.models.workflow import Workflow, WorkflowStep
 
 __all__ = [
     "AuthPauseMetadata",
@@ -55,6 +56,8 @@ __all__ = [
     "TimelineEvent",
     "TimelineEventType",
     "TransitionEvent",
+    "Workflow",
+    "WorkflowStep",
     "compute_state_diff",
     "infer_candidate_rules",
 ]

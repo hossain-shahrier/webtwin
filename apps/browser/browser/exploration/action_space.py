@@ -9,5 +9,5 @@ def inventory_from_page(page, investigation_id) -> ActionInventory:
     return build_action_inventory(observation)
 
 
-def inventory_from_observation(observation: Observation) -> ActionInventory:
-    return build_action_inventory(observation)
+def inventory_from_observation(observation: Observation, goal=None) -> ActionInventory:
+    return build_action_inventory(observation, goal=goal)

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Auth Interrupt</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Sensitive Offer Edit</h1>
+    <form id="offer-edit">
+      <label for="dept">Department</label>
+      <select id="dept" name="dept">
+        <option value="eng">Engineering</option>
+        <option value="sales">Sales</option>
+      </select>
+
+      <button id="unlock_sensitive" type="button">Edit compensation</button>
+
+      <div id="login_panel" class="hidden">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" />
+        <button id="login_btn" type="button">Sign in</button>
+      </div>
+
+      <div id="comp_panel" class="hidden">
+        <label for="comp_amount">Compensation</label>
+        <input id="comp_amount" name="comp_amount" type="number" />
+      </div>
+    </form>
+
+    <script>
+      const unlock = document.getElementById("unlock_sensitive");
+      const loginPanel = document.getElementById("login_panel");
+      const compPanel = document.getElementById("comp_panel");
+      const loginBtn = document.getElementById("login_btn");
+      let authed = false;
+
+      unlock.addEventListener("click", () => {
+        if (!authed) {
+          loginPanel.classList.remove("hidden");
+          return;
+        }
+        compPanel.classList.remove("hidden");
+      });
+
+      loginBtn.addEventListener("click", () => {
+        const password = document.getElementById("password").value;
+        if (password === "demo") {
+          authed = true;
+          loginPanel.classList.add("hidden");
+          compPanel.classList.remove("hidden");
+        }
+      });
+    </script>
+  </body>
+</html>

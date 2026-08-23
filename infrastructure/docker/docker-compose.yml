@@ -15,5 +15,61 @@ services:
       timeout: 5s
       retries: 10
 
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/webtwin-neo4j
+      NEO4J_PLUGINS: '[]'
+    volumes:
+      - neo4j_data:/data
+    profiles: ["kg"]
+
+  api:
+    image: python:3.13-slim
+    working_dir: /app/apps/api
+    volumes:
+      - ../../:/app
+    command: >
+      bash -lc "pip install -q uv &&
+      cd /app/apps/api &&
+      uv sync &&
+      PYTHONPATH=. WEBTWIN_STORE=postgres
+      DATABASE_URL=postgresql+psycopg://webtwin:webtwin@postgres:5432/webtwin
+      PORT=8060 uv run python main.py"
+    ports:
+      - "8060:8060"
+    environment:
+      WEBTWIN_STORE: postgres
+      DATABASE_URL: postgresql+psycopg://webtwin:webtwin@postgres:5432/webtwin
+      PORT: "8060"
+      WEBTWIN_KG_ENABLED: "false"
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: webtwin-neo4j
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["stack"]
+
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ../../:/app
+    command: >
+      sh -lc "corepack enable && pnpm install &&
+      NEXT_PUBLIC_API_URL=http://127.0.0.1:8060 pnpm nx serve web --host=0.0.0.0"
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:8060
+    profiles: ["stack"]
+    depends_on:
+      - api
+
 volumes:
   postgres_data:
+  neo4j_data:

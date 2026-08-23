@@ -1,0 +1,7 @@
+[
+  {
+    "id": "l6-bonus-visible",
+    "condition": { "field": "rating", "operator": "equals", "value": "exceeds" },
+    "effect": { "field": "bonus_code", "visible": true }
+  }
+]

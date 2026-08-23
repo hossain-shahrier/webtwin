@@ -29,10 +29,13 @@ class ExplorationState(BaseModel):
     known_rule_ids: list[str] = Field(default_factory=list)
     tested_action_keys: list[str] = Field(default_factory=list)
     states_seen: list[str] = Field(default_factory=list)
+    pages_seen_urls: list[str] = Field(default_factory=list)
     actions_taken: int = 0
 
     def sync_inventory(self, inventory: ActionInventory) -> None:
         self.url = inventory.url
+        if inventory.url and inventory.url not in self.pages_seen_urls:
+            self.pages_seen_urls.append(inventory.url)
         for action in inventory.actions:
             if action.type != ActionType.SELECT:
                 continue
@@ -50,6 +53,8 @@ class ExplorationState(BaseModel):
         self.actions_taken += 1
         if action.key not in self.tested_action_keys:
             self.tested_action_keys.append(action.key)
+        if action.type == ActionType.NAVIGATE and value and value not in self.pages_seen_urls:
+            self.pages_seen_urls.append(value)
         if action.type == ActionType.SELECT and value is not None:
             coverage = self.coverage.setdefault(
                 action.target,
@@ -77,6 +82,16 @@ class ExplorationState(BaseModel):
                     candidates.append((action, value))
                 continue
             for value in coverage.untested_values:
+                candidates.append((action, value))
+        return candidates
+
+    def unexplored_navigate_actions(self, inventory: ActionInventory) -> list[tuple[ExploratoryAction, str]]:
+        candidates: list[tuple[ExploratoryAction, str]] = []
+        for action in inventory.actions:
+            if action.type != ActionType.NAVIGATE or not action.values:
+                continue
+            value = action.values[0]
+            if value not in self.pages_seen_urls and action.key not in self.tested_action_keys:
                 candidates.append((action, value))
         return candidates
 

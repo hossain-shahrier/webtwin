@@ -13,11 +13,19 @@ from browser.observer.snapshot import capture_observation
 
 def _set_field(page: Page, field: str, value: str) -> None:
     locator = page.locator(f'#{field}, [name="{field}"]')
-    tag = locator.evaluate("(el) => el.tagName.toLowerCase()")
+    if value == "__click__":
+        locator.first.click(timeout=5000)
+        page.wait_for_timeout(150)
+        return
+    if locator.count() == 0:
+        raise RuntimeError(f"Field not found for verification: {field}")
+    tag = locator.first.evaluate("(el) => el.tagName.toLowerCase()")
     if tag == "select":
-        locator.select_option(value)
+        locator.first.select_option(value)
+    elif tag == "button" or (tag == "input" and locator.first.get_attribute("type") == "button"):
+        locator.first.click()
     else:
-        locator.fill(value)
+        locator.first.fill(value)
     page.wait_for_timeout(150)
 
 
@@ -32,21 +40,26 @@ def verify_rule_on_page(
     results: list[VerificationExperimentResult] = []
 
     for index, experiment in enumerate(experiments):
-        for field, value in experiment.set_fields.items():
-            _set_field(page, field, value)
+        try:
+            for field, value in experiment.set_fields.items():
+                _set_field(page, field, value)
 
-        observation = capture_observation(page, investigation_id)
-        client.record_observation(observation)
-        state = client.record_state(
-            observation.to_application_state(sequence=sequence_start + index)
-        )
-        passed, details = evaluate_expectations(state, experiment.expectations)
+            observation = capture_observation(page, investigation_id)
+            client.record_observation(observation)
+            state = client.record_state(
+                observation.to_application_state(sequence=sequence_start + index)
+            )
+            passed, details = evaluate_expectations(state, experiment.expectations)
+        except Exception as error:
+            passed, details = False, f"verification error: {error}"
+            observation = None
+
         results.append(
             VerificationExperimentResult(
                 experiment_id=experiment.id,
                 passed=passed,
                 details=details,
-                observation_id=observation.id,
+                observation_id=observation.id if observation is not None else None,
             )
         )
 

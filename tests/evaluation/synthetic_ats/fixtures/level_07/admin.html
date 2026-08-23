@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Admin Role</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body data-role="admin">
+    <h1>Compensation (Admin)</h1>
+    <form id="admin-form">
+      <label for="role_mode">View As</label>
+      <select id="role_mode" name="role_mode">
+        <option value="recruiter" selected>Recruiter</option>
+        <option value="admin">Admin</option>
+      </select>
+
+      <div id="salary_group">
+        <label for="salary">Salary</label>
+        <input id="salary" name="salary" type="number" />
+      </div>
+
+      <div id="approval_group" class="hidden">
+        <label for="approval_notes">Approval Notes</label>
+        <textarea id="approval_notes" name="approval_notes"></textarea>
+      </div>
+    </form>
+
+    <script>
+      const roleMode = document.getElementById("role_mode");
+      const approvalGroup = document.getElementById("approval_group");
+      const salary = document.getElementById("salary");
+
+      function sync() {
+        const isAdmin = role_mode.value === "admin";
+        approvalGroup.classList.toggle("hidden", !isAdmin);
+        salary.readOnly = !isAdmin;
+      }
+
+      roleMode.addEventListener("change", sync);
+      sync();
+    </script>
+  </body>
+</html>

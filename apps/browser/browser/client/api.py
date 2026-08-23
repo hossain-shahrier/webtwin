@@ -130,3 +130,13 @@ class ApiClient:
         response = httpx.post(f"{self.base_url}/investigations/{investigation_id}/resume")
         response.raise_for_status()
         return Investigation.model_validate(response.json())
+
+    def record_metrics(self, investigation_id: UUID, run) -> object:
+        from webtwin_core.evaluation.runs import EvaluationRun
+
+        response = httpx.post(
+            f"{self.base_url}/investigations/{investigation_id}/metrics",
+            json=run.model_dump(mode="json") if hasattr(run, "model_dump") else run,
+        )
+        response.raise_for_status()
+        return EvaluationRun.model_validate(response.json())

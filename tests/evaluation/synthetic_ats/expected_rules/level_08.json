@@ -1,0 +1,7 @@
+[
+  {
+    "id": "l8-login-visible",
+    "condition": { "field": "unlock_sensitive", "operator": "clicked", "value": true },
+    "effect": { "field": "password", "visible": true }
+  }
+]

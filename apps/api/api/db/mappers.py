@@ -4,6 +4,7 @@ import json
 from typing import Any
 from uuid import UUID
 
+from webtwin_core.evaluation.runs import EvaluationRun
 from webtwin_core.models import (
     ApplicationState,
     BusinessRule,
@@ -28,6 +29,7 @@ from webtwin_core.verification.engine import (
 
 from api.db.schema import (
     ApplicationStateRow,
+    EvaluationRunRow,
     EvidenceRow,
     ExperimentResultRow,
     ExperimentRow,
@@ -67,6 +69,9 @@ def investigation_to_row(model: Investigation) -> InvestigationRow:
         checkpoint=_jsonable(model.checkpoint.model_dump(mode="json")) if model.checkpoint else None,
         failure_reason=model.failure_reason,
         blocked_reason=model.blocked_reason,
+        application_version=model.application_version,
+        environment=model.environment,
+        role_scope=model.role_scope,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )
@@ -86,6 +91,9 @@ def investigation_from_row(row: InvestigationRow) -> Investigation:
         "checkpoint": row.checkpoint,
         "failure_reason": row.failure_reason,
         "blocked_reason": row.blocked_reason,
+        "application_version": row.application_version,
+        "environment": row.environment,
+        "role_scope": row.role_scope,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }
@@ -487,3 +495,79 @@ def rule_experiment_links(
         RuleExperimentRow(rule_id=rule_id, experiment_id=experiment_id, relation=relation)
         for experiment_id in experiment_ids
     ]
+
+
+def evaluation_run_to_row(model: EvaluationRun) -> EvaluationRunRow:
+    return EvaluationRunRow(
+        id=model.id,
+        investigation_id=model.investigation_id,
+        policy=model.policy,
+        level=model.level,
+        exploration_coverage=model.exploration_coverage,
+        state_coverage=model.state_coverage,
+        actions_taken=model.actions_taken,
+        candidate_rules=model.candidate_rules,
+        verified_rules=model.verified_rules,
+        rules_per_action=model.rules_per_action,
+        safety_violations=model.safety_violations,
+        blocked_unsafe_actions=model.blocked_unsafe_actions,
+        pages_seen=model.pages_seen,
+        discovery_precision=model.discovery_precision,
+        discovery_recall=model.discovery_recall,
+        discovery_f1=model.discovery_f1,
+        verification_accuracy=model.verification_accuracy,
+        created_at=model.created_at,
+    )
+
+
+def evaluation_run_from_row(row: EvaluationRunRow) -> EvaluationRun:
+    return EvaluationRun.model_validate(
+        {
+            "id": row.id,
+            "investigation_id": row.investigation_id,
+            "policy": row.policy,
+            "level": row.level,
+            "exploration_coverage": row.exploration_coverage,
+            "state_coverage": row.state_coverage,
+            "actions_taken": row.actions_taken,
+            "candidate_rules": row.candidate_rules,
+            "verified_rules": row.verified_rules,
+            "rules_per_action": row.rules_per_action,
+            "safety_violations": row.safety_violations,
+            "blocked_unsafe_actions": row.blocked_unsafe_actions,
+            "pages_seen": row.pages_seen,
+            "discovery_precision": row.discovery_precision,
+            "discovery_recall": row.discovery_recall,
+            "discovery_f1": row.discovery_f1,
+            "verification_accuracy": row.verification_accuracy,
+            "created_at": row.created_at,
+        }
+    )
+
+
+def workflow_to_row(model: "Workflow") -> "WorkflowRow":
+    from api.db.schema import WorkflowRow
+
+    return WorkflowRow(
+        id=model.id,
+        investigation_id=model.investigation_id,
+        name=model.name,
+        steps=[step.model_dump(mode="json") for step in model.steps],
+        trigger_action_ids=list(model.trigger_action_ids),
+        confidence=model.confidence,
+        created_at=model.created_at,
+    )
+
+
+def workflow_from_row(row: "WorkflowRow") -> "Workflow":
+    from webtwin_core.models.workflow import Workflow, WorkflowStep
+
+    return Workflow(
+        id=row.id,
+        investigation_id=row.investigation_id,
+        name=row.name,
+        steps=[WorkflowStep.model_validate(step) for step in (row.steps or [])],
+        trigger_action_ids=list(row.trigger_action_ids or []),
+        confidence=row.confidence,
+        created_at=row.created_at,
+    )

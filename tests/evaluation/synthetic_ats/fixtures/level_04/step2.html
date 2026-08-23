@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Wizard Step 2</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Offer Wizard — Step 2</h1>
+    <form id="wizard-step-2">
+      <label for="salary_band">Salary Band</label>
+      <select id="salary_band" name="salary_band">
+        <option value="mid">Mid</option>
+        <option value="senior">Senior</option>
+        <option value="exec">Executive</option>
+      </select>
+
+      <div id="equity_group" class="hidden">
+        <label for="equity">Equity Grant</label>
+        <input id="equity" name="equity" type="text" />
+      </div>
+
+      <a href="step1.html">Back</a>
+    </form>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const offerType = params.get("offer_type") || sessionStorage.getItem("offer_type") || "standard";
+      const salaryBand = document.getElementById("salary_band");
+      const equityGroup = document.getElementById("equity_group");
+
+      function sync() {
+        const show = salaryBand.value === "exec" || offerType === "executive";
+        equityGroup.classList.toggle("hidden", !show);
+      }
+
+      // Carry offer type from step 1 via session when linked without query
+      const stored = sessionStorage.getItem("offer_type");
+      if (stored === "executive") {
+        salaryBand.value = "exec";
+      }
+
+      salaryBand.addEventListener("change", sync);
+      sync();
+    </script>
+  </body>
+</html>

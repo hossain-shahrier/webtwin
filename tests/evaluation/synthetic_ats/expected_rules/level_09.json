@@ -1,0 +1,12 @@
+[
+  {
+    "id": "l9-partner-visible",
+    "condition": { "field": "channel", "operator": "equals", "value": "partner" },
+    "effect": { "field": "partner_code", "visible": true }
+  },
+  {
+    "id": "l9-gdpr-visible",
+    "condition": { "field": "region", "operator": "equals", "value": "eu" },
+    "effect": { "field": "gdpr_ack", "visible": true }
+  }
+]

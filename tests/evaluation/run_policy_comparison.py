@@ -1,4 +1,4 @@
-"""Compare exploration policies on synthetic fixtures (no LLM)."""
+"""Compare exploration policies on synthetic fixtures (includes llm ablation)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "apps" / "browser"))
 from browser.investigation.runner import run_exploration_and_verification  # noqa: E402
 
 BENCHMARK_ROOT = ROOT / "tests/evaluation/synthetic_ats"
-POLICIES = ("random", "first_unexplored", "information_gain")
+POLICIES = ("random", "first_unexplored", "information_gain", "llm")
 LEVELS = {
     "exploration": {
         "fixture": BENCHMARK_ROOT / "fixtures/exploration/employment_options.html",
@@ -26,6 +26,10 @@ LEVELS = {
     "level_01": {
         "fixture": BENCHMARK_ROOT / "fixtures/level_01/conditional_visibility.html",
         "expected": BENCHMARK_ROOT / "expected_rules/level_01.json",
+    },
+    "level_09": {
+        "fixture": BENCHMARK_ROOT / "fixtures/level_09/budget_efficiency.html",
+        "expected": BENCHMARK_ROOT / "expected_rules/level_09.json",
     },
 }
 

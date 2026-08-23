@@ -1,0 +1,7 @@
+[
+  {
+    "id": "l4-equity-visible",
+    "condition": { "field": "salary_band", "operator": "equals", "value": "exec" },
+    "effect": { "field": "equity", "visible": true }
+  }
+]

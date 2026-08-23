@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Wizard Step 1</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Offer Wizard — Step 1</h1>
+    <form id="wizard-step-1">
+      <label for="candidate_name">Candidate Name</label>
+      <input id="candidate_name" name="candidate_name" type="text" />
+
+      <label for="offer_type">Offer Type</label>
+      <select id="offer_type" name="offer_type">
+        <option value="standard">Standard</option>
+        <option value="executive">Executive</option>
+      </select>
+
+      <a id="next_step" href="step2.html">Continue to compensation</a>
+    </form>
+  </body>
+</html>

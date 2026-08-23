@@ -51,7 +51,16 @@ def choose_first_unexplored(
     inventory = _automatable_inventory(inventory, allow_caution=allow_caution)
     candidates = state.unexplored_select_actions(inventory)
     if not candidates:
-        return None
+        nav = state.unexplored_navigate_actions(inventory)
+        if not nav:
+            return None
+        action, value = nav[0]
+        return PlannedAction(
+            action=action,
+            value=value,
+            reason=f"first unexplored page {action.target}",
+            expected_information_gain=1.0,
+        )
     action, value = candidates[0]
     return PlannedAction(
         action=action,
@@ -70,7 +79,16 @@ def choose_max_information_gain(
     inventory = _automatable_inventory(inventory, allow_caution=allow_caution)
     candidates = state.unexplored_select_actions(inventory)
     if not candidates:
-        return None
+        nav = state.unexplored_navigate_actions(inventory)
+        if not nav:
+            return None
+        action, value = nav[0]
+        return PlannedAction(
+            action=action,
+            value=value,
+            reason=f"unexplored page {action.target}",
+            expected_information_gain=2.0,
+        )
 
     best_action, best_value = candidates[0]
     best_score = information_gain(state, best_action, best_value)
@@ -96,6 +114,8 @@ def choose_random_unexplored(
 ) -> PlannedAction | None:
     inventory = _automatable_inventory(inventory, allow_caution=allow_caution)
     candidates = state.unexplored_select_actions(inventory)
+    if not candidates:
+        candidates = state.unexplored_navigate_actions(inventory)
     if not candidates:
         return None
     randomizer = rng or random.Random()

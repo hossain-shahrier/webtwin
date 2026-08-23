@@ -74,7 +74,7 @@ def infer_candidate_rules(
     before: ApplicationState,
     after: ApplicationState,
 ) -> list[BusinessRule]:
-    """Deterministic heuristics — no LLM."""
+    """Deterministic heuristics — no LLM. Supports multi-trigger and required-field rules."""
     rules: list[BusinessRule] = []
     before_fields = _field_map(before)
     after_fields = _field_map(after)
@@ -87,34 +87,126 @@ def infer_candidate_rules(
         for change in diff.changes
         if change.attribute == "visible" and change.before is False and change.after is True
     ]
+    required_changes = [
+        change
+        for change in diff.changes
+        if change.attribute == "required" and change.before is False and change.after is True
+    ]
+
+    # Multi-trigger: each value change can explain each newly visible field
+    # (skip alert/validation surfaces when a clickable control exists — those are click-driven)
+    click_hints = ("submit", "validate", "unlock", "login", "save", "continue", "next", "check")
+    click_fields = [
+        name
+        for name in after_fields
+        if any(hint in name.lower() for hint in click_hints)
+    ]
 
     for visibility in visibility_changes:
+        field_name = visibility.field.lower()
+        is_alert = any(token in field_name for token in ("error", "alert", "validation", "warning"))
+        if is_alert and click_fields:
+            continue
+        triggers = value_changes or []
+        for trigger_change in triggers:
+            trigger = trigger_change.field
+            trigger_value = after_fields.get(trigger)
+            if trigger_value is None or trigger_value.value is None:
+                continue
+            effect_field = after_fields.get(visibility.field)
+            rules.append(
+                BusinessRule(
+                    investigation_id=diff.investigation_id,
+                    name=f"{trigger} affects {visibility.field} visibility",
+                    condition=RuleCondition(
+                        field=trigger,
+                        operator="equals",
+                        value=trigger_value.value,
+                    ),
+                    effect=RuleEffect(
+                        field=visibility.field,
+                        visible=True,
+                        required=effect_field.required if effect_field else None,
+                    ),
+                    confidence=0.6 if len(triggers) == 1 else 0.55,
+                    status=RuleStatus.CANDIDATE,
+                )
+            )
+
+    # Validation / alert / newly revealed fields after click-style interactions
+    for visibility in visibility_changes:
+        field_name = visibility.field.lower()
+        is_alert = any(token in field_name for token in ("error", "alert", "validation", "warning"))
+        if any(
+            rule.effect.field == visibility.field
+            and rule.effect.visible is True
+            and rule.condition.operator == "clicked"
+            for rule in rules
+        ):
+            continue
+        if not value_changes or is_alert or not any(
+            rule.effect.field == visibility.field and rule.effect.visible is True for rule in rules
+        ):
+            for click_field in click_fields or (["submit"] if is_alert else []):
+                rules.append(
+                    BusinessRule(
+                        investigation_id=diff.investigation_id,
+                        name=f"{click_field} shows {visibility.field}",
+                        condition=RuleCondition(field=click_field, operator="clicked", value=True),
+                        effect=RuleEffect(field=visibility.field, visible=True),
+                        confidence=0.55 if is_alert else 0.5,
+                        status=RuleStatus.CANDIDATE,
+                    )
+                )
+                break
+
+    # Required-field candidates (L3 validation path)
+    for required in required_changes:
         trigger = value_changes[0].field if value_changes else None
         if trigger is None:
+            # Fall back: field became required without a clear trigger — still emit weak candidate
+            rules.append(
+                BusinessRule(
+                    investigation_id=diff.investigation_id,
+                    name=f"{required.field} becomes required",
+                    condition=RuleCondition(field=required.field, operator="equals", value="submitted"),
+                    effect=RuleEffect(field=required.field, required=True),
+                    confidence=0.4,
+                    status=RuleStatus.CANDIDATE,
+                )
+            )
             continue
-
         trigger_value = after_fields.get(trigger)
         if trigger_value is None or trigger_value.value is None:
             continue
-
-        effect_field = after_fields.get(visibility.field)
         rules.append(
             BusinessRule(
                 investigation_id=diff.investigation_id,
-                name=f"{trigger} affects {visibility.field} visibility",
+                name=f"{trigger} makes {required.field} required",
                 condition=RuleCondition(
                     field=trigger,
                     operator="equals",
                     value=trigger_value.value,
                 ),
-                effect=RuleEffect(
-                    field=visibility.field,
-                    visible=True,
-                    required=effect_field.required if effect_field else None,
-                ),
-                confidence=0.6,
+                effect=RuleEffect(field=required.field, required=True),
+                confidence=0.65,
                 status=RuleStatus.CANDIDATE,
             )
         )
 
-    return rules
+    # Deduplicate by signature
+    seen: set[tuple] = set()
+    unique: list[BusinessRule] = []
+    for rule in rules:
+        signature = (
+            rule.condition.field,
+            str(rule.condition.value),
+            rule.effect.field,
+            rule.effect.visible,
+            rule.effect.required,
+        )
+        if signature in seen:
+            continue
+        seen.add(signature)
+        unique.append(rule)
+    return unique

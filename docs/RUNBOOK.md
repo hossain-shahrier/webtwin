@@ -1,0 +1,52 @@
+# WebTwin Runbook
+
+## Environment contract
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | `postgresql+psycopg://webtwin:webtwin@127.0.0.1:5432/webtwin` | Postgres |
+| `WEBTWIN_STORE` | `memory` (tests) / `postgres` (dev) | Store backend |
+| `WEBTWIN_API_URL` | `http://127.0.0.1:8060` | Browser / eval → API |
+| `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8060` | Dashboard → API |
+| `PORT` | `8060` | API listen port |
+| `WEBTWIN_KG_ENABLED` | `false` | Neo4j sync |
+| `NEO4J_URI` | `bolt://127.0.0.1:7687` | Knowledge graph |
+| `WEBTWIN_LLM_PROVIDER` | unset / `heuristic` | AI planner (`openai`/`anthropic`/`heuristic`) |
+| `WEBTWIN_LLM_API_KEY` | unset | Optional remote LLM key |
+| `WEBTWIN_APP_VERSION` | `synthetic-1` | Version metadata on investigations |
+| `WEBTWIN_ENVIRONMENT` | `eval` | Environment label |
+| `WEBTWIN_ROLE_SCOPE` | unset | Role tag for multi-session knowledge |
+
+## Local (recommended)
+
+```bash
+docker compose -f infrastructure/docker/docker-compose.yml up -d postgres
+pnpm nx run api:migrate
+pnpm nx run api:dev:postgres
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8060 pnpm nx serve web
+WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run evaluation:benchmark
+WEBTWIN_API_URL=http://127.0.0.1:8060 WEBTWIN_EXPLORATION_POLICIES=random,first_unexplored,information_gain,llm pnpm nx run evaluation:compare-policies
+```
+
+Browser stays on the host (Playwright):
+
+```bash
+WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run browser:investigate
+```
+
+## Optional Knowledge Graph
+
+```bash
+docker compose -f infrastructure/docker/docker-compose.yml --profile kg up -d neo4j
+WEBTWIN_KG_ENABLED=1 pnpm nx run api:sync-kg
+```
+
+Q&A (evidence-grounded): `POST /investigations/{id}/questions` with `{ "question": "Why does End Date appear?" }`.
+
+## Tests
+
+```bash
+pnpm nx run webtwin-core:test
+pnpm nx run api:test
+pnpm nx run evaluation:explore
+```

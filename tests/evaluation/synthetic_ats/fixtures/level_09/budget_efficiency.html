@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Budget Efficiency</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Multi-control Coverage</h1>
+    <nav>
+      <a href="#page-a">Page A</a>
+      <a href="page_b.html">Page B</a>
+    </nav>
+    <form id="coverage-form">
+      <label for="region">Region</label>
+      <select id="region" name="region">
+        <option value="na">NA</option>
+        <option value="eu">EU</option>
+        <option value="apac">APAC</option>
+      </select>
+
+      <label for="channel">Channel</label>
+      <select id="channel" name="channel">
+        <option value="direct">Direct</option>
+        <option value="partner">Partner</option>
+      </select>
+
+      <div id="partner_code_group" class="hidden">
+        <label for="partner_code">Partner Code</label>
+        <input id="partner_code" name="partner_code" type="text" />
+      </div>
+
+      <div id="gdpr_group" class="hidden">
+        <label for="gdpr_ack">GDPR Acknowledgement</label>
+        <input id="gdpr_ack" name="gdpr_ack" type="checkbox" />
+      </div>
+    </form>
+
+    <script>
+      const region = document.getElementById("region");
+      const channel = document.getElementById("channel");
+      const partnerGroup = document.getElementById("partner_code_group");
+      const gdprGroup = document.getElementById("gdpr_group");
+
+      function sync() {
+        partnerGroup.classList.toggle("hidden", channel.value !== "partner");
+        gdprGroup.classList.toggle("hidden", region.value !== "eu");
+      }
+
+      region.addEventListener("change", sync);
+      channel.addEventListener("change", sync);
+      sync();
+    </script>
+  </body>
+</html>

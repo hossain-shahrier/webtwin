@@ -39,6 +39,9 @@ class InvestigationRow(Base):
     checkpoint: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     failure_reason: Mapped[str | None] = mapped_column(Text)
     blocked_reason: Mapped[str | None] = mapped_column(Text)
+    application_version: Mapped[str | None] = mapped_column(String(128))
+    environment: Mapped[str | None] = mapped_column(String(128))
+    role_scope: Mapped[str | None] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -312,3 +315,61 @@ class RuleExperimentRow(Base):
         PGUUID(as_uuid=True), ForeignKey("experiments.id", ondelete="CASCADE"), index=True
     )
     relation: Mapped[str] = mapped_column(String(64), nullable=False)  # tested_by | verified_by
+
+
+class EvaluationRunRow(Base):
+    __tablename__ = "evaluation_runs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    investigation_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("investigations.id", ondelete="CASCADE"), index=True
+    )
+    policy: Mapped[str] = mapped_column(String(64), nullable=False)
+    level: Mapped[str | None] = mapped_column(String(64))
+    exploration_coverage: Mapped[float] = mapped_column(Float, default=0.0)
+    state_coverage: Mapped[int] = mapped_column(Integer, default=0)
+    actions_taken: Mapped[int] = mapped_column(Integer, default=0)
+    candidate_rules: Mapped[int] = mapped_column(Integer, default=0)
+    verified_rules: Mapped[int] = mapped_column(Integer, default=0)
+    rules_per_action: Mapped[float] = mapped_column(Float, default=0.0)
+    safety_violations: Mapped[int] = mapped_column(Integer, default=0)
+    blocked_unsafe_actions: Mapped[int] = mapped_column(Integer, default=0)
+    pages_seen: Mapped[int] = mapped_column(Integer, default=1)
+    discovery_precision: Mapped[float | None] = mapped_column(Float)
+    discovery_recall: Mapped[float | None] = mapped_column(Float)
+    discovery_f1: Mapped[float | None] = mapped_column(Float)
+    verification_accuracy: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class NetworkEventRow(Base):
+    __tablename__ = "network_events"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    investigation_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("investigations.id", ondelete="CASCADE"), index=True
+    )
+    timeline_event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), index=True)
+    method: Mapped[str] = mapped_column(String(16), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    timing_ms: Mapped[float | None] = mapped_column(Float)
+    request_headers: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    response_headers: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    body_shape: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    evidence_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class WorkflowRow(Base):
+    __tablename__ = "workflows"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    investigation_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("investigations.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    steps: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    trigger_action_ids: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

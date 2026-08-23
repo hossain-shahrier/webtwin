@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from urllib.parse import urljoin, urlparse
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+from webtwin_core.models.investigation import InvestigationGoal
 from webtwin_core.models.observation import ElementSnapshot, Observation
 
 
@@ -49,16 +51,44 @@ def _target_name(element: ElementSnapshot) -> str:
         return element.name
     if element.label:
         return element.label.lower().replace(" ", "_")
+    if element.text:
+        return element.text.lower().replace(" ", "_")[:48]
     return element.selector.lstrip("#")
 
 
-def build_action_inventory(observation: Observation) -> ActionInventory:
+def _same_origin(base_url: str, href: str) -> bool:
+    if href.startswith("#") or href.startswith("javascript:"):
+        return False
+    absolute = urljoin(base_url, href)
+    return urlparse(base_url).netloc == urlparse(absolute).netloc or absolute.startswith("file:")
+
+
+def build_action_inventory(
+    observation: Observation,
+    goal: InvestigationGoal | None = None,
+) -> ActionInventory:
     """Derive candidate actions from an observation — no LLM."""
     actions: list[ExploratoryAction] = []
+    scope = (goal.scope or "").lower() if goal else ""
+
     for element in observation.elements:
         if not element.visible or not element.enabled:
             continue
         target = _target_name(element)
+        if element.tag == "a" and element.value:
+            if not _same_origin(observation.url, element.value):
+                continue
+            actions.append(
+                ExploratoryAction(
+                    type=ActionType.NAVIGATE,
+                    target=target or element.value,
+                    selector=element.selector,
+                    values=[urljoin(observation.url, element.value)],
+                    label=element.text or element.label,
+                    metadata={"href": element.value},
+                )
+            )
+            continue
         if element.tag == "select":
             actions.append(
                 ExploratoryAction(
@@ -73,16 +103,22 @@ def build_action_inventory(observation: Observation) -> ActionInventory:
             input_type = (element.input_type or "text").lower()
             if input_type in {"hidden", "submit", "button", "reset", "file"}:
                 continue
+            # Goal-directed: prefer inputs matching scope; still include all for inventory
             actions.append(
                 ExploratoryAction(
                     type=ActionType.INPUT,
                     target=target,
                     selector=element.selector,
                     label=element.label,
-                    metadata={"input_type": input_type},
+                    metadata={
+                        "input_type": input_type,
+                        "goal_relevant": str(bool(scope and scope in target.lower())),
+                    },
                 )
             )
-        elif element.tag == "button" or (element.tag == "input" and (element.input_type or "").lower() in {"submit", "button"}):
+        elif element.tag == "button" or (
+            element.tag == "input" and (element.input_type or "").lower() in {"submit", "button"}
+        ):
             actions.append(
                 ExploratoryAction(
                     type=ActionType.CLICK,
@@ -91,4 +127,8 @@ def build_action_inventory(observation: Observation) -> ActionInventory:
                     label=element.text or element.label,
                 )
             )
+
+    if scope:
+        actions.sort(key=lambda action: 0 if scope in action.target.lower() else 1)
+
     return ActionInventory(url=observation.url, actions=actions)

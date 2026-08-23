@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Network Validation</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .hidden { display: none; }
+      .error { color: #b00020; margin-top: 0.5rem; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Employee ID Check</h1>
+    <form id="network-form">
+      <label for="employee_id">Employee ID</label>
+      <input id="employee_id" name="employee_id" type="text" />
+
+      <button id="validate" type="button">Validate</button>
+      <div id="network_error" class="error hidden" role="alert">Employee ID is invalid.</div>
+      <div id="network_ok" class="hidden">Employee ID accepted.</div>
+    </form>
+
+    <script>
+      const employeeId = document.getElementById("employee_id");
+      const validate = document.getElementById("validate");
+      const networkError = document.getElementById("network_error");
+      const networkOk = document.getElementById("network_ok");
+
+      validate.addEventListener("click", async () => {
+        networkError.classList.add("hidden");
+        networkOk.classList.add("hidden");
+        const blob = new Blob(
+          [JSON.stringify({ valid: employeeId.value === "E-100", code: employeeId.value })],
+          { type: "application/json" }
+        );
+        const url = URL.createObjectURL(blob);
+        try {
+          const response = await fetch(url);
+          const payload = await response.json();
+          if (payload.valid) {
+            networkOk.classList.remove("hidden");
+          } else {
+            networkError.classList.remove("hidden");
+          }
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      });
+    </script>
+  </body>
+</html>

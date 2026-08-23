@@ -1,0 +1,7 @@
+[
+  {
+    "id": "l7-approval-visible",
+    "condition": { "field": "role_mode", "operator": "equals", "value": "admin" },
+    "effect": { "field": "approval_notes", "visible": true }
+  }
+]

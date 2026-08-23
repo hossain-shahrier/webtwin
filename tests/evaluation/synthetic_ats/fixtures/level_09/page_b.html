@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Synthetic ATS — Budget Page B</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .hidden { display: none; }
+      label { display: block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Secondary Page</h1>
+    <a href="budget_efficiency.html">Back</a>
+    <form id="page-b-form">
+      <label for="priority">Priority</label>
+      <select id="priority" name="priority">
+        <option value="low">Low</option>
+        <option value="high">High</option>
+      </select>
+      <div id="rush_group" class="hidden">
+        <label for="rush_fee">Rush Fee</label>
+        <input id="rush_fee" name="rush_fee" type="number" />
+      </div>
+    </form>
+    <script>
+      const priority = document.getElementById("priority");
+      const rush = document.getElementById("rush_group");
+      priority.addEventListener("change", () => {
+        rush.classList.toggle("hidden", priority.value !== "high");
+      });
+    </script>
+  </body>
+</html>

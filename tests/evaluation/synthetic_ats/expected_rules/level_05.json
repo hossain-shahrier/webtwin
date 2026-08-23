@@ -1,0 +1,7 @@
+[
+  {
+    "id": "l5-network-error",
+    "condition": { "field": "validate", "operator": "clicked", "value": true },
+    "effect": { "field": "network_error", "visible": true }
+  }
+]

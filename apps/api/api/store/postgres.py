@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
+from webtwin_core.evaluation.runs import EvaluationRun
 from webtwin_core.models import (
     ApplicationState,
     BusinessRule,
@@ -22,6 +23,7 @@ from webtwin_core.verification.engine import VerificationRun
 from api.db import mappers
 from api.db.schema import (
     ApplicationStateRow,
+    EvaluationRunRow,
     EvidenceRow,
     ExperimentRow,
     InvestigationRow,
@@ -33,6 +35,7 @@ from api.db.schema import (
     SessionRow,
     StateTransitionRow,
     TimelineEventRow,
+    WorkflowRow,
 )
 
 
@@ -51,10 +54,14 @@ class PostgresStore:
         self.diffs = _EntityMap(self, "diff")
         self.rules = _EntityMap(self, "rule")
         self.verification_runs = _EntityMap(self, "experiment")
+        self.evaluation_runs = _EntityMap(self, "evaluation_run")
+        self.workflows = _EntityMap(self, "workflow")
 
     def clear(self) -> None:
         with self._session_factory() as session:
             for table in (
+                WorkflowRow,
+                EvaluationRunRow,
                 RuleExperimentRow,
                 RuleEvidenceRow,
                 ExperimentRow,
@@ -142,6 +149,12 @@ class PostgresStore:
                 .options(selectinload(ExperimentRow.results))
             )
             return mappers.experiment_from_row(row) if row else None
+        if kind == "evaluation_run":
+            row = session.get(EvaluationRunRow, entity_id)
+            return mappers.evaluation_run_from_row(row) if row else None
+        if kind == "workflow":
+            row = session.get(WorkflowRow, entity_id)
+            return mappers.workflow_from_row(row) if row else None
         raise KeyError(kind)
 
     def _load_all(self, session: Session, kind: str) -> list:
@@ -191,6 +204,13 @@ class PostgresStore:
         if kind == "experiment":
             rows = session.scalars(select(ExperimentRow).options(selectinload(ExperimentRow.results)))
             return [mappers.experiment_from_row(row) for row in rows]
+        if kind == "evaluation_run":
+            return [
+                mappers.evaluation_run_from_row(row)
+                for row in session.scalars(select(EvaluationRunRow))
+            ]
+        if kind == "workflow":
+            return [mappers.workflow_from_row(row) for row in session.scalars(select(WorkflowRow))]
         raise KeyError(kind)
 
     def _upsert(self, session: Session, kind: str, entity_id: UUID, value) -> None:
@@ -265,6 +285,16 @@ class PostgresStore:
             )
             relation = "verified_by" if value.status == RuleStatus.VERIFIED else "tested_by"
             session.add(RuleExperimentRow(rule_id=value.rule_id, experiment_id=value.id, relation=relation))
+            return
+        if kind == "evaluation_run":
+            assert isinstance(value, EvaluationRun)
+            session.merge(mappers.evaluation_run_to_row(value))
+            return
+        if kind == "workflow":
+            from webtwin_core.models.workflow import Workflow
+
+            assert isinstance(value, Workflow)
+            session.merge(mappers.workflow_to_row(value))
             return
         raise KeyError(kind)
 

@@ -122,3 +122,29 @@
   margin-bottom: 1rem;
   padding: 0.65rem 0.85rem;
 }
+
+.form {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  max-width: 40rem;
+}
+
+.input {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #e2e8f0;
+  padding: 0.65rem 0.75rem;
+}
+
+.button {
+  background: #1d4ed8;
+  border: 0;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.65rem 0.9rem;
+  width: fit-content;
+}
