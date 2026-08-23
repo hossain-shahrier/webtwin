@@ -46,6 +46,7 @@ TRANSITIONS: dict[tuple[InvestigationStatus, TransitionEvent], InvestigationStat
     (InvestigationStatus.OBSERVING, TransitionEvent.BEGIN_EXPLORATION): InvestigationStatus.EXPLORING,
     (InvestigationStatus.OBSERVING, TransitionEvent.GENERATE_RULES): InvestigationStatus.GENERATING_RULE,
     (InvestigationStatus.GENERATING_RULE, TransitionEvent.START_VERIFICATION): InvestigationStatus.VERIFYING,
+    (InvestigationStatus.GENERATING_RULE, TransitionEvent.COMPLETE): InvestigationStatus.COMPLETED,
     (InvestigationStatus.EXPLORING, TransitionEvent.START_VERIFICATION): InvestigationStatus.VERIFYING,
     (InvestigationStatus.VERIFYING, TransitionEvent.VERIFICATION_COMPLETE): InvestigationStatus.EXPLORING,
     (InvestigationStatus.VERIFYING, TransitionEvent.COMPLETE): InvestigationStatus.COMPLETED,

@@ -148,10 +148,16 @@ def infer_candidate_rules(
             for rule in rules
         ):
             continue
+        # Require a real click-like control on the page — never invent a phantom "submit"
+        if not click_fields:
+            continue
         if not value_changes or is_alert or not any(
             rule.effect.field == visibility.field and rule.effect.visible is True for rule in rules
         ):
-            for click_field in click_fields or (["submit"] if is_alert else []):
+            for click_field in click_fields:
+                # Skip site-search chrome (q / search boxes appearing across pages)
+                if field_name in {"q", "query", "search", "s"} and not is_alert:
+                    continue
                 rules.append(
                     BusinessRule(
                         investigation_id=diff.investigation_id,
@@ -235,10 +241,10 @@ def infer_candidate_rules(
                 )
             )
 
-    # Deduplicate by signature
+    # Deduplicate by signature — prefer equals over clicked for same effect field
     seen: set[tuple] = set()
     unique: list[BusinessRule] = []
-    for rule in rules:
+    for rule in sorted(rules, key=lambda r: 0 if r.condition.operator == "equals" else 1):
         signature = (
             rule.condition.field,
             str(rule.condition.value),
@@ -247,6 +253,14 @@ def infer_candidate_rules(
             rule.effect.required,
             getattr(rule.effect, "enabled", None),
         )
+        effect_key = (rule.effect.field, rule.effect.visible)
+        if any(
+            (u.effect.field, u.effect.visible) == effect_key
+            and u.condition.operator == "equals"
+            and rule.condition.operator == "clicked"
+            for u in unique
+        ):
+            continue
         if signature in seen:
             continue
         seen.add(signature)

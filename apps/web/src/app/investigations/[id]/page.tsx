@@ -12,6 +12,7 @@ import {
   getRules,
   getTimeline,
   getTransitions,
+  restartFailedInvestigation,
   resumeFailedInvestigation,
 } from '../../../lib/api';
 import type {
@@ -104,16 +105,43 @@ export default function InvestigationDetailPage() {
         <section className={styles.section}>
           <h2>Recovery</h2>
           <p className={styles.empty}>{investigation.failure_reason ?? 'Investigation failed'}</p>
-          <button
-            className={styles.button}
-            type="button"
-            onClick={async () => {
-              await resumeFailedInvestigation(investigation.id);
-              await refresh();
-            }}
-          >
-            Resume from checkpoint
-          </button>
+          {investigation.checkpoint ? (
+            <button
+              className={styles.button}
+              type="button"
+              onClick={async () => {
+                try {
+                  await resumeFailedInvestigation(investigation.id);
+                  await refresh();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Resume failed');
+                }
+              }}
+            >
+              Resume from checkpoint
+            </button>
+          ) : (
+            <>
+              <p className={styles.empty}>
+                Failed before a checkpoint was saved (often during early auth). Re-queue so the
+                headed worker can claim it again.
+              </p>
+              <button
+                className={styles.button}
+                type="button"
+                onClick={async () => {
+                  try {
+                    await restartFailedInvestigation(investigation.id);
+                    await refresh();
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'Restart failed');
+                  }
+                }}
+              >
+                Re-queue investigation
+              </button>
+            </>
+          )}
         </section>
       )}
 

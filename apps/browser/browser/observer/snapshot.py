@@ -44,9 +44,11 @@ _COLLECT_JS = """() => {
   function push(el, inShadow) {
     if (out.length >= MAX) return;
     const tag = el.tagName.toLowerCase();
+    const testid = testidOf(el);
     const interactive = ['input','select','textarea','button','a'].includes(tag)
       || el.getAttribute('role') === 'alert'
-      || (el.className && String(el.className).includes('error'));
+      || (el.className && String(el.className).includes('error'))
+      || !!testid;
     if (!interactive && !(el.id && (String(el.id).includes('error') || String(el.id).includes('validation')))) {
       return;
     }
@@ -63,7 +65,6 @@ _COLLECT_JS = """() => {
     if (tag === 'select') {
       options = Array.from(el.options || []).map(o => o.value || (o.textContent || '').trim());
     }
-    const testid = testidOf(el);
     const name = el.getAttribute('name') || el.id || null;
     const role = el.getAttribute('role') || null;
     const label = labelOf(el);

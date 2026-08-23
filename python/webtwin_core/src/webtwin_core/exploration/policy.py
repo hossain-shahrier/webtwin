@@ -49,7 +49,25 @@ def choose_first_unexplored(
     allow_caution: bool = False,
 ) -> PlannedAction | None:
     inventory = _automatable_inventory(inventory, allow_caution=allow_caution)
-    # SPA bias: cover unexplored soft routes before fields on current route
+    # Prefer fields on the current route, then unexplored soft routes
+    candidates = state.unexplored_select_actions(inventory)
+    if candidates:
+        action, value = candidates[0]
+        return PlannedAction(
+            action=action,
+            value=value,
+            reason=f"first unexplored value for {action.target}",
+            expected_information_gain=information_gain(state, action, value),
+        )
+    inputs = state.unexplored_input_actions(inventory)
+    if inputs:
+        action, value = inputs[0]
+        return PlannedAction(
+            action=action,
+            value=value,
+            reason=f"probe input {action.target}",
+            expected_information_gain=0.8,
+        )
     routes = state.unexplored_route_actions(inventory)
     if routes:
         action, value = routes[0]
@@ -59,22 +77,8 @@ def choose_first_unexplored(
             reason=f"first unexplored route {action.target}",
             expected_information_gain=2.5,
         )
-    candidates = state.unexplored_select_actions(inventory)
-    if not candidates:
-        nav = state.unexplored_navigate_actions(inventory)
-        if not nav:
-            # Optional scroll when fields may be offscreen
-            for action in inventory.actions:
-                if action.type == ActionType.SCROLL and action.key not in state.tested_action_keys:
-                    if state.scrolls_used >= 3:
-                        break
-                    return PlannedAction(
-                        action=action,
-                        value="down",
-                        reason="scroll to reveal offscreen fields",
-                        expected_information_gain=0.5,
-                    )
-            return None
+    nav = state.unexplored_navigate_actions(inventory)
+    if nav:
         action, value = nav[0]
         return PlannedAction(
             action=action,
@@ -82,13 +86,17 @@ def choose_first_unexplored(
             reason=f"first unexplored page {action.target}",
             expected_information_gain=1.0,
         )
-    action, value = candidates[0]
-    return PlannedAction(
-        action=action,
-        value=value,
-        reason=f"first unexplored value for {action.target}",
-        expected_information_gain=information_gain(state, action, value),
-    )
+    for action in inventory.actions:
+        if action.type == ActionType.SCROLL and action.key not in state.tested_action_keys:
+            if state.scrolls_used >= 3:
+                break
+            return PlannedAction(
+                action=action,
+                value="down",
+                reason="scroll to reveal offscreen fields",
+                expected_information_gain=0.5,
+            )
+    return None
 
 
 def choose_max_information_gain(
@@ -98,6 +106,29 @@ def choose_max_information_gain(
     allow_caution: bool = False,
 ) -> PlannedAction | None:
     inventory = _automatable_inventory(inventory, allow_caution=allow_caution)
+    candidates = state.unexplored_select_actions(inventory)
+    if candidates:
+        best_action, best_value = candidates[0]
+        best_score = information_gain(state, best_action, best_value)
+        for action, value in candidates[1:]:
+            score = information_gain(state, action, value)
+            if score > best_score:
+                best_action, best_value, best_score = action, value, score
+        return PlannedAction(
+            action=best_action,
+            value=best_value,
+            reason=f"max information gain for {best_action.target}={best_value}",
+            expected_information_gain=best_score,
+        )
+    inputs = state.unexplored_input_actions(inventory)
+    if inputs:
+        action, value = inputs[0]
+        return PlannedAction(
+            action=action,
+            value=value,
+            reason=f"probe input {action.target}",
+            expected_information_gain=0.8,
+        )
     routes = state.unexplored_route_actions(inventory)
     if routes:
         action, value = routes[0]
@@ -107,21 +138,8 @@ def choose_max_information_gain(
             reason=f"unexplored route {action.target}",
             expected_information_gain=3.0,
         )
-    candidates = state.unexplored_select_actions(inventory)
-    if not candidates:
-        nav = state.unexplored_navigate_actions(inventory)
-        if not nav:
-            for action in inventory.actions:
-                if action.type == ActionType.SCROLL and action.key not in state.tested_action_keys:
-                    if state.scrolls_used >= 3:
-                        break
-                    return PlannedAction(
-                        action=action,
-                        value="down",
-                        reason="scroll for information gain",
-                        expected_information_gain=0.5,
-                    )
-            return None
+    nav = state.unexplored_navigate_actions(inventory)
+    if nav:
         action, value = nav[0]
         return PlannedAction(
             action=action,
@@ -129,20 +147,17 @@ def choose_max_information_gain(
             reason=f"unexplored page {action.target}",
             expected_information_gain=2.0,
         )
-
-    best_action, best_value = candidates[0]
-    best_score = information_gain(state, best_action, best_value)
-    for action, value in candidates[1:]:
-        score = information_gain(state, action, value)
-        if score > best_score:
-            best_action, best_value, best_score = action, value, score
-
-    return PlannedAction(
-        action=best_action,
-        value=best_value,
-        reason=f"max information gain for {best_action.target}={best_value}",
-        expected_information_gain=best_score,
-    )
+    for action in inventory.actions:
+        if action.type == ActionType.SCROLL and action.key not in state.tested_action_keys:
+            if state.scrolls_used >= 3:
+                break
+            return PlannedAction(
+                action=action,
+                value="down",
+                reason="scroll for information gain",
+                expected_information_gain=0.5,
+            )
+    return None
 
 
 def choose_random_unexplored(

@@ -19,7 +19,9 @@
 | `WEBTWIN_SPA_MODE` | unset / `0` | Soft nav + SPA observation (`1` enables) |
 | `WEBTWIN_SETTLE_TIMEOUT_MS` | `8000` | Async settle budget after actions |
 | `WEBTWIN_SETTLE_STABLE_MS` | `200` | DOM quiet period for settle |
-| `WEBTWIN_STORAGE_ALLOWLIST` | `theme,locale,...` | SPA localStorage keys to capture (redacted) |
+| `WEBTWIN_TARGET_URL` | unset | Live URL for `browser:investigate` (overrides fixture) |
+| `WEBTWIN_NAV_TIMEOUT_MS` | `45000` | Navigation timeout (`domcontentloaded`) |
+| `WEBTWIN_STORAGE_STATE` | unset | Path to Playwright `storage_state` JSON (HITL login reuse) |
 
 ## Local (recommended)
 
@@ -37,6 +39,13 @@ Browser stays on the host (Playwright):
 
 ```bash
 WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run browser:investigate
+# Live site (example):
+WEBTWIN_TARGET_URL=https://www.polito.it/en WEBTWIN_MAX_ACTIONS=12 \\
+  WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run browser:investigate
+# Authenticated portal (HITL session first):
+# uv run --directory apps/browser python scripts/capture_storage_state.py --url '…' --out ~/.webtwin/portal.json
+WEBTWIN_STORAGE_STATE=~/.webtwin/portal.json WEBTWIN_TARGET_URL='…' \\
+  WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run browser:investigate
 # Or poll dashboard-created jobs:
 WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run browser:worker
 ```

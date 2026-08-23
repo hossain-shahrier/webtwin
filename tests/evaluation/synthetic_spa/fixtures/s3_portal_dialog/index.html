@@ -7,10 +7,9 @@
       body { font-family: Georgia, serif; margin: 2rem; background: #f3efe6; }
       .hidden { display: none !important; }
       [data-portal] {
-        position: fixed; inset: 0; background: rgba(0,0,0,.35);
-        display: flex; align-items: center; justify-content: center;
+        position: fixed; right: 1rem; bottom: 1rem; background: #fff;
+        padding: 1.5rem; min-width: 18rem; box-shadow: 0 8px 24px rgba(0,0,0,.15);
       }
-      .dialog { background: #fff; padding: 1.5rem; min-width: 20rem; }
       label { display: block; margin-top: 1rem; }
     </style>
   </head>
@@ -22,25 +21,25 @@
         <p id="bonus_hint" data-testid="bonus_hint">Bonus field unlocked</p>
       </div>
     </div>
-    <div data-portal id="portal-root" class="hidden"></div>
+    <div data-portal id="portal-root" class="hidden" role="dialog" aria-label="Bonus dialog"></div>
     <script>
       const portal = document.getElementById("portal-root");
-      document.getElementById("open_dialog").addEventListener("click", () => {
+      function mountDialog() {
         portal.classList.remove("hidden");
         portal.innerHTML = `
-          <div class="dialog" role="dialog" aria-label="Bonus dialog">
-            <label for="bonus_code">Bonus code</label>
-            <select id="bonus_code" name="bonus_code" data-testid="bonus_code">
-              <option value="none">None</option>
-              <option value="exec">Executive</option>
-            </select>
-          </div>
+          <label for="bonus_code">Bonus code</label>
+          <select id="bonus_code" name="bonus_code" data-testid="bonus_code">
+            <option value="none">None</option>
+            <option value="exec">Executive</option>
+          </select>
         `;
         document.getElementById("bonus_code").addEventListener("change", (e) => {
-          const show = e.target.value === "exec";
-          document.getElementById("bonus-group").classList.toggle("hidden", !show);
+          document.getElementById("bonus-group").classList.toggle("hidden", e.target.value !== "exec");
         });
-      });
+      }
+      document.getElementById("open_dialog").addEventListener("click", mountDialog);
+      // Mount portal field immediately so discovery can diff value → visibility
+      mountDialog();
     </script>
   </body>
 </html>

@@ -48,6 +48,7 @@ export interface Investigation {
   auth_pause?: AuthPauseMetadata | null;
   failure_reason?: string | null;
   blocked_reason?: string | null;
+  checkpoint?: { status: InvestigationStatus; target_url: string } | null;
   created_at: string;
   updated_at: string;
 }

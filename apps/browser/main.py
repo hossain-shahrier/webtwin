@@ -5,6 +5,7 @@ from uuid import UUID
 
 from webtwin_core.defaults import DEFAULT_API_URL
 from webtwin_core.exploration import ExplorationBudget
+from webtwin_core.models import InvestigationStatus
 
 from browser.client.api import ApiClient
 from browser.investigation.runner import (
@@ -69,19 +70,25 @@ def run_worker(api_url: str, headless: bool) -> None:
         if not pending:
             time.sleep(poll_seconds)
             continue
+        # Prefer brand-new jobs over orphaned auth pauses.
+        pending.sort(key=lambda job: 0 if job.status == InvestigationStatus.CREATED else 1)
         job = pending[0]
         policy = job.feature_scope or os.environ.get("WEBTWIN_POLICY", "information_gain")
         os.environ["WEBTWIN_POLICY"] = policy
         if job.spa_mode or (job.environment or "").lower().find("spa") >= 0:
             os.environ["WEBTWIN_SPA_MODE"] = "1"
         print(f"Claiming {job.id} → {job.target_url} (policy={policy} spa={job.spa_mode})")
-        _run_one(
-            target=job.target_url,
-            api_url=api_url,
-            headless=headless,
-            mode="exploration",
-            investigation_id=job.id,
-        )
+        try:
+            _run_one(
+                target=job.target_url,
+                api_url=api_url,
+                headless=headless,
+                mode="exploration",
+                investigation_id=job.id,
+            )
+        except Exception as error:
+            print(f"[WebTwin] Job {job.id} failed: {error}")
+            continue
 
 
 def main() -> None:
@@ -93,17 +100,20 @@ def main() -> None:
         run_worker(api_url, headless)
         return
 
-    fixture = Path(
-        os.environ.get(
-            "WEBTWIN_FIXTURE",
-            str(BENCHMARK_ROOT / "fixtures/level_01/conditional_visibility.html"),
-        )
-    )
     investigation_id_env = os.environ.get("WEBTWIN_INVESTIGATION_ID")
     investigation_id = UUID(investigation_id_env) if investigation_id_env else None
-    target: str | Path = fixture
+    target_url = os.environ.get("WEBTWIN_TARGET_URL")
     if investigation_id is not None:
-        target = ApiClient(api_url).get_investigation(investigation_id).target_url
+        target: str | Path = ApiClient(api_url).get_investigation(investigation_id).target_url
+    elif target_url:
+        target = target_url
+    else:
+        target = Path(
+            os.environ.get(
+                "WEBTWIN_FIXTURE",
+                str(BENCHMARK_ROOT / "fixtures/level_01/conditional_visibility.html"),
+            )
+        )
 
     _run_one(
         target=target,

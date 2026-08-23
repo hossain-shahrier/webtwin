@@ -34,6 +34,14 @@
         "cwd": "apps/browser"
       }
     },
+    "worker-headed": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "options": {
+        "command": "WEBTWIN_WORKER=1 WEBTWIN_HEADLESS=false WEBTWIN_API_URL=http://127.0.0.1:8060 uv run python main.py",
+        "cwd": "apps/browser"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

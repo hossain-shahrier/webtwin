@@ -3,5 +3,10 @@
     "id": "s7-gdpr",
     "condition": { "field": "region", "operator": "equals", "value": "eu" },
     "effect": { "field": "gdpr_note", "visible": true }
+  },
+  {
+    "id": "s7-mgr-perk",
+    "condition": { "field": "band", "operator": "equals", "value": "mgr" },
+    "effect": { "field": "mgr_perk", "visible": true }
   }
 ]

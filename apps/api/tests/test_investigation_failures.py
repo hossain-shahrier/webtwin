@@ -99,6 +99,25 @@ def test_resume_from_failed_restores_checkpoint(client: TestClient) -> None:
     assert response.json()["status"] == InvestigationStatus.EXPLORING.value
 
 
+def test_resume_without_checkpoint_returns_409(client: TestClient) -> None:
+    investigation_id = _create(client)
+    _transition(client, investigation_id, TransitionEvent.START)
+    _transition(client, investigation_id, TransitionEvent.BROWSER_CRASH, reason="early fail")
+    response = client.post(f"/investigations/{investigation_id}/resume")
+    assert response.status_code == 409
+    assert "No checkpoint" in response.json()["detail"]
+
+
+def test_restart_failed_without_checkpoint(client: TestClient) -> None:
+    investigation_id = _create(client)
+    _transition(client, investigation_id, TransitionEvent.START)
+    _transition(client, investigation_id, TransitionEvent.BROWSER_CRASH, reason="early fail")
+    response = client.post(f"/investigations/{investigation_id}/restart")
+    assert response.status_code == 200
+    assert response.json()["status"] == InvestigationStatus.CREATED.value
+    assert response.json()["failure_reason"] is None
+
+
 def test_idempotent_transition_retry(client: TestClient) -> None:
     investigation_id = _create(client)
     _transition(client, investigation_id, TransitionEvent.START)

@@ -61,7 +61,6 @@ def _target_name(element: ElementSnapshot) -> str:
 def _same_origin(base_url: str, href: str) -> bool:
     if href.startswith("javascript:"):
         return False
-    # In-app hash / soft routes stay same-document (SPA soft-nav)
     if href.startswith("#"):
         return True
     absolute = urljoin(base_url, href)
@@ -70,6 +69,52 @@ def _same_origin(base_url: str, href: str) -> bool:
     if absolute.startswith("file:") or base.scheme == "file":
         return True
     return base.netloc == target.netloc
+
+
+_SKIP_HREF_TOKENS = (
+    "mailto:",
+    "tel:",
+    "javascript:",
+    "/login",
+    "/signin",
+    "/sign-in",
+    "/logout",
+    "idp.",
+    "sso.",
+    ".pdf",
+    ".zip",
+    ".doc",
+)
+
+
+def _should_skip_href(href: str) -> bool:
+    lowered = href.lower()
+    return any(token in lowered for token in _SKIP_HREF_TOKENS)
+
+
+def _locale_prefix(url: str) -> str:
+    path = urlparse(url).path or "/"
+    parts = [p for p in path.split("/") if p]
+    if parts and len(parts[0]) in {2, 5} and parts[0].replace("-", "").isalpha():
+        return f"/{parts[0]}"
+    return ""
+
+
+def _navigate_priority(base_url: str, absolute: str) -> int:
+    """Lower is better: same locale + shallow hubs over deep news articles."""
+    base_prefix = _locale_prefix(base_url)
+    target = urlparse(absolute)
+    path = target.path or "/"
+    score = 0
+    if base_prefix and not path.startswith(base_prefix):
+        score += 50
+    depth = len([p for p in path.split("/") if p])
+    score += max(0, depth - 2) * 3
+    if target.query:
+        score += 5
+    if any(token in path.lower() for token in ("news", "poliflash", "comunicazione", "press")):
+        score += 8
+    return score
 
 
 def build_action_inventory(
@@ -88,7 +133,7 @@ def build_action_inventory(
         target = element.stable_key or _target_name(element)
         if element.tag == "a" and element.value:
             href = element.value
-            if href.startswith("javascript:"):
+            if href.startswith("javascript:") or _should_skip_href(href):
                 continue
             if not _same_origin(observation.url, href):
                 continue
@@ -104,18 +149,28 @@ def build_action_inventory(
                         selector=element.selector,
                         values=[absolute],
                         label=element.text or element.label,
-                        metadata={"href": href, "nav": "soft"},
+                        metadata={
+                            "href": href,
+                            "nav": "soft",
+                            "priority": str(_navigate_priority(observation.url, absolute)),
+                        },
                     )
                 )
+            elif href.startswith("#"):
+                continue
             else:
+                absolute_nav = urljoin(observation.url, href)
                 actions.append(
                     ExploratoryAction(
                         type=ActionType.NAVIGATE,
                         target=target or href,
                         selector=element.selector,
-                        values=[urljoin(observation.url, href)],
+                        values=[absolute_nav],
                         label=element.text or element.label,
-                        metadata={"href": href},
+                        metadata={
+                            "href": href,
+                            "priority": str(_navigate_priority(observation.url, absolute_nav)),
+                        },
                     )
                 )
             continue
@@ -152,8 +207,10 @@ def build_action_inventory(
             safety = SafetyClass.SAFE
             if any(token in label_l for token in ("delete", "remove", "destroy")):
                 safety = SafetyClass.DESTRUCTIVE
-            elif any(token in label_l for token in ("submit", "save", "send", "pay")):
+            elif any(token in label_l for token in ("submit", "save", "send", "pay", "login", "sign in")):
                 safety = SafetyClass.CAUTION
+            elif any(token in label_l for token in ("accept", "cookie", "consent")):
+                continue
             actions.append(
                 ExploratoryAction(
                     type=ActionType.CLICK,
@@ -176,7 +233,17 @@ def build_action_inventory(
             )
         )
 
-    if scope:
-        actions.sort(key=lambda action: 0 if scope in action.target.lower() else 1)
+    def _sort_key(action: ExploratoryAction) -> tuple:
+        scope_miss = 0 if scope and scope in action.target.lower() else 1
+        if action.type in {ActionType.NAVIGATE, ActionType.ROUTE}:
+            try:
+                priority = int(action.metadata.get("priority", "99"))
+            except ValueError:
+                priority = 99
+            return (scope_miss, 1, priority, action.target)
+        if action.type == ActionType.SELECT:
+            return (scope_miss, 0, 0, action.target)
+        return (scope_miss, 2, 0, action.target)
 
+    actions.sort(key=_sort_key)
     return ActionInventory(url=observation.url, actions=actions)

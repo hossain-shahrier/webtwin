@@ -1,9 +1,26 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from pydantic import BaseModel, Field
 
 from webtwin_core.exploration.actions import ActionInventory, ActionType, ExploratoryAction
 from webtwin_core.models.rules import BusinessRule
+
+
+def route_key(url_or_href: str) -> str:
+    """Stable route identity including hash fragments for SPAs."""
+    if not url_or_href:
+        return ""
+    if url_or_href.startswith("#"):
+        return url_or_href
+    parsed = urlparse(url_or_href)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    if parsed.fragment:
+        path = f"{path}#{parsed.fragment}"
+    return path
 
 
 class TargetCoverage(BaseModel):
@@ -41,13 +58,10 @@ class ExplorationState(BaseModel):
         self.url = inventory.url
         if inventory.url and inventory.url not in self.pages_seen_urls:
             self.pages_seen_urls.append(inventory.url)
-        from urllib.parse import urlparse
-
         if inventory.url:
-            parsed = urlparse(inventory.url)
-            route_key = f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path
-            if route_key and route_key not in self.routes_seen:
-                self.routes_seen.append(route_key)
+            key = route_key(inventory.url)
+            if key and key not in self.routes_seen:
+                self.routes_seen.append(key)
         for action in inventory.actions:
             if action.type != ActionType.SELECT:
                 continue
@@ -68,12 +82,9 @@ class ExplorationState(BaseModel):
         if action.type == ActionType.NAVIGATE and value and value not in self.pages_seen_urls:
             self.pages_seen_urls.append(value)
         if action.type == ActionType.ROUTE and value:
-            from urllib.parse import urlparse
-
-            parsed = urlparse(value)
-            route_key = f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path
-            if route_key and route_key not in self.routes_seen:
-                self.routes_seen.append(route_key)
+            key = route_key(value)
+            if key and key not in self.routes_seen:
+                self.routes_seen.append(key)
             self.soft_nav_successes += 1
         if action.type == ActionType.SCROLL:
             self.scrolls_used += 1
@@ -107,17 +118,35 @@ class ExplorationState(BaseModel):
                 candidates.append((action, value))
         return candidates
 
+    def unexplored_input_actions(self, inventory: ActionInventory) -> list[tuple[ExploratoryAction, str]]:
+        """Probe text inputs once with a safe non-destructive value."""
+        candidates: list[tuple[ExploratoryAction, str]] = []
+        for action in inventory.actions:
+            if action.type != ActionType.INPUT:
+                continue
+            if action.key in self.tested_action_keys:
+                continue
+            input_type = (action.metadata.get("input_type") or "text").lower()
+            if input_type in {"email"}:
+                value = "probe@example.com"
+            elif input_type in {"number", "tel"}:
+                value = "1"
+            else:
+                value = "engineering"
+            # Skip global site-search chrome — probing it rarely yields business rules
+            if action.target.lower() in {"q", "query", "search", "s", "grouped-demo"}:
+                continue
+            candidates.append((action, value))
+        return candidates
+
     def unexplored_navigate_actions(self, inventory: ActionInventory) -> list[tuple[ExploratoryAction, str]]:
         candidates: list[tuple[ExploratoryAction, str]] = []
         for action in inventory.actions:
             if action.type not in {ActionType.NAVIGATE, ActionType.ROUTE} or not action.values:
                 continue
             value = action.values[0]
-            from urllib.parse import urlparse
-
-            parsed = urlparse(value)
-            route_key = f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path
-            seen = value in self.pages_seen_urls or route_key in self.routes_seen
+            key = route_key(value)
+            seen = value in self.pages_seen_urls or (key in self.routes_seen if key else False)
             if not seen and action.key not in self.tested_action_keys:
                 candidates.append((action, value))
         return candidates

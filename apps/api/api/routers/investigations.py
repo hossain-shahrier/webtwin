@@ -38,6 +38,11 @@ def resume_investigation(investigation_id: UUID) -> Investigation:
     return svc.resume_failed(investigation_id)
 
 
+@router.post("/{investigation_id}/restart", response_model=Investigation)
+def restart_investigation(investigation_id: UUID) -> Investigation:
+    return svc.restart_failed(investigation_id)
+
+
 @router.post("/{investigation_id}/auth/begin", response_model=svc.SessionPublic)
 def begin_authentication(investigation_id: UUID) -> svc.SessionPublic:
     return svc.begin_authentication(investigation_id)

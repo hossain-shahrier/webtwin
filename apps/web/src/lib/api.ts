@@ -86,6 +86,10 @@ export function resumeFailedInvestigation(id: string): Promise<Investigation> {
   return request(`/investigations/${id}/resume`, { method: 'POST' });
 }
 
+export function restartFailedInvestigation(id: string): Promise<Investigation> {
+  return request(`/investigations/${id}/restart`, { method: 'POST' });
+}
+
 export function askQuestion(
   investigationId: string,
   question: string,

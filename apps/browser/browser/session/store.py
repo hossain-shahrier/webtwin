@@ -1,3 +1,9 @@
+"""Session persistence — Playwright storage_state only (never log secrets)."""
+
+from __future__ import annotations
+
+import os
+import shutil
 from pathlib import Path
 from uuid import UUID
 
@@ -22,9 +28,25 @@ class SessionStore:
     def exists(self, investigation_id: UUID) -> bool:
         return self.path_for(investigation_id).exists()
 
+    def bootstrap_from_env(self, investigation_id: UUID) -> Path | None:
+        """
+        Optionally seed this investigation from WEBTWIN_STORAGE_STATE.
+        Use after a headed HITL login export — does not read Chrome's cookie DB.
+        """
+        raw = os.environ.get("WEBTWIN_STORAGE_STATE", "").strip()
+        if not raw:
+            return None
+        source = Path(raw).expanduser()
+        if not source.is_file():
+            raise FileNotFoundError(f"WEBTWIN_STORAGE_STATE not found: {source}")
+        dest = self.path_for(investigation_id)
+        shutil.copyfile(source, dest)
+        return dest
+
     def new_context(self, browser: Browser, investigation_id: UUID) -> BrowserContext:
+        self.bootstrap_from_env(investigation_id)
         path = self.path_for(investigation_id)
-        if path.exists():
+        if path.exists() and path.stat().st_size > 50:
             return browser.new_context(storage_state=str(path))
         return browser.new_context()
 

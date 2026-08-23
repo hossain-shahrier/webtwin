@@ -42,7 +42,6 @@ LEVELS = {
         "fixture": SPA_ROOT / "fixtures/s3_portal_dialog/index.html",
         "expected": SPA_ROOT / "expected_rules/s3.json",
         "actions": [
-            {"field": "open_dialog", "value": "__click__"},
             {"field": "bonus_code", "value": "exec"},
         ],
     },
@@ -51,7 +50,6 @@ LEVELS = {
         "fixture": SPA_ROOT / "fixtures/s4_virtualized_list/index.html",
         "expected": SPA_ROOT / "expected_rules/s4.json",
         "actions": [
-            {"field": "open_row", "value": "__click__"},
             {"field": "remote_ok", "value": "no"},
         ],
     },

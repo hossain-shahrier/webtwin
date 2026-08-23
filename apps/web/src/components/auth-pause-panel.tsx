@@ -35,7 +35,7 @@ export function AuthPausePanel({ investigation, session, onUpdate }: AuthPausePa
   const [error, setError] = useState<string | null>(null);
 
   const sessionStatus = session?.session_status ?? 'auth_required';
-  const isAuthenticating = sessionStatus === 'authenticating';
+  const isAuthenticating = sessionStatus === 'authenticating' || sessionStatus === 'auth_required';
   const humanReady = session?.human_ready ?? false;
   const authVerified = session?.has_persisted_storage && session.auth_state === 'authenticated';
 
@@ -52,9 +52,7 @@ export function AuthPausePanel({ investigation, session, onUpdate }: AuthPausePa
     }
   }
 
-  function openBrowser() {
-    const url = investigation.auth_pause?.url ?? investigation.target_url;
-    window.open(url, '_blank', 'noopener,noreferrer');
+  function startAuthFlow() {
     void run('begin', () => beginAuthentication(investigation.id));
   }
 
@@ -64,8 +62,9 @@ export function AuthPausePanel({ investigation, session, onUpdate }: AuthPausePa
         <span className={styles.badge}>Investigation Paused</span>
         <h2>Authentication is required</h2>
         <p className={styles.subtitle}>
-          WebTwin assists with authenticated investigation. Complete login manually in the browser
-          window — it does not bypass authentication or CAPTCHA.
+          Log in only in the <strong>Chrome for Testing</strong> window opened by{' '}
+          <code>browser:worker-headed</code>. A normal Chrome/Safari tab does not share cookies with
+          the worker — do not use “open in new tab” for login.
         </p>
       </header>
 
@@ -84,23 +83,33 @@ export function AuthPausePanel({ investigation, session, onUpdate }: AuthPausePa
         </div>
         <div>
           <dt>Browser session</dt>
-          <dd>{isAuthenticating ? 'Authentication in progress…' : 'Waiting for human'}</dd>
+          <dd>
+            {authVerified
+              ? 'Login verified by worker'
+              : humanReady
+                ? 'Waiting for worker to verify Chromium session…'
+                : isAuthenticating
+                  ? 'Log in in Chrome for Testing, then confirm below'
+                  : 'Waiting for human'}
+          </dd>
         </div>
       </dl>
 
       {error && <p className={styles.error}>{error}</p>}
 
       <div className={styles.actions}>
-        {!isAuthenticating ? (
-          <button type="button" className={styles.primary} disabled={!!busy} onClick={openBrowser}>
-            Open Browser
+        {sessionStatus !== 'authenticating' && sessionStatus !== 'authenticated' ? (
+          <button type="button" className={styles.primary} disabled={!!busy} onClick={startAuthFlow}>
+            I&apos;m ready to log in
           </button>
         ) : (
           <>
             <p className={styles.progress}>
               {authVerified
-                ? '● Authentication detected in browser session'
-                : 'Authentication in progress… complete login in the browser window.'}
+                ? '● Worker verified login and saved the session'
+                : humanReady
+                  ? 'Worker is checking the headed Chromium window and will auto-resume when the login wall is gone. Keep that window open.'
+                  : 'Complete login in Chrome for Testing (SPID/password), leave the window open, then confirm below.'}
             </p>
             {!humanReady && (
               <button
@@ -120,7 +129,7 @@ export function AuthPausePanel({ investigation, session, onUpdate }: AuthPausePa
                 !humanReady
                   ? 'Confirm authentication completion first'
                   : !authVerified
-                    ? 'Waiting for browser session verification'
+                    ? 'Worker has not verified login / saved storage yet'
                     : undefined
               }
               onClick={() => run('resume', () => resumeAfterAuthentication(investigation.id))}

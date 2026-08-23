@@ -6,7 +6,17 @@ from webtwin_core.models import AuthPauseMetadata, AuthPauseReason, AuthState, T
 class SessionManager:
     """Human-in-the-loop auth: detect walls, pause, and resume safely."""
 
-    AUTH_HINTS = ("login", "signin", "sign-in", "auth", "sso")
+    # Prefer path-ish tokens; avoid bare "auth"/"spid" which match many post-login URLs.
+    AUTH_HINTS = (
+        "/login",
+        "login?",
+        "signin",
+        "sign-in",
+        "sign_in",
+        "apply.login",
+        "/sso",
+        "sso?",
+    )
     BLOCK_HINTS = ("captcha", "cloudflare", "challenge")
 
     def __init__(self, resume_callback: Callable[[], None] | None = None) -> None:
@@ -51,21 +61,44 @@ class SessionManager:
 
     @staticmethod
     def sso_button_visible(page) -> bool:
-        locator = page.locator(
-            'button:has-text("SSO"), button:has-text("Sign in with"), '
-            '[data-testid="sso-login"], a:has-text("Sign in with")'
+        selectors = (
+            'button:has-text("SSO")',
+            'button:has-text("Sign in with")',
+            '[data-testid="sso-login"]',
+            'a:has-text("Sign in with")',
+            'a:has-text("SPID")',
+            'button:has-text("SPID")',
+            'a:has-text("Entra con SPID")',
+            'button:has-text("Entra con SPID")',
         )
-        return locator.count() > 0 and locator.first.is_visible()
+        for selector in selectors:
+            try:
+                locator = page.locator(selector)
+                if locator.count() > 0 and locator.first.is_visible():
+                    return True
+            except Exception:
+                continue
+        try:
+            locator = page.get_by_text("Entra con SPID", exact=False)
+            return locator.count() > 0 and locator.first.is_visible()
+        except Exception:
+            return False
 
     @staticmethod
     def password_field_visible(page) -> bool:
-        locator = page.locator('input[type="password"]')
-        return locator.count() > 0 and locator.first.is_visible()
+        try:
+            locator = page.locator('input[type="password"]')
+            return locator.count() > 0 and locator.first.is_visible()
+        except Exception:
+            return False
 
     @staticmethod
     def otp_field_visible(page) -> bool:
-        locator = page.locator('input[autocomplete="one-time-code"], input[name*="otp" i]')
-        return locator.count() > 0 and locator.first.is_visible()
+        try:
+            locator = page.locator('input[autocomplete="one-time-code"], input[name*="otp" i]')
+            return locator.count() > 0 and locator.first.is_visible()
+        except Exception:
+            return False
 
     def pause_for_human(self, metadata: AuthPauseMetadata) -> None:
         self.paused = True

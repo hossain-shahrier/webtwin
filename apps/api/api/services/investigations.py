@@ -146,17 +146,24 @@ def list_investigations() -> list[Investigation]:
 
 
 def list_pending_investigations() -> list[Investigation]:
-    """Investigations waiting for a browser worker (status=created)."""
+    """Investigations waiting for a browser worker (created, or orphaned auth pause)."""
     return [
         item
         for item in store.investigations.values()
-        if item.status == InvestigationStatus.CREATED
+        if item.status
+        in {
+            InvestigationStatus.CREATED,
+            InvestigationStatus.AUTH_REQUIRED,
+        }
     ]
 
 
 def claim_investigation(investigation_id: UUID) -> Investigation:
-    """Atomically claim a created investigation for the browser worker."""
+    """Atomically claim a created (or orphaned auth_required) investigation for the worker."""
     investigation = get_investigation(investigation_id)
+    if investigation.status == InvestigationStatus.AUTH_REQUIRED:
+        # Worker crashed mid-login — allow reclaim without resetting to created.
+        return investigation
     if investigation.status != InvestigationStatus.CREATED:
         raise HTTPException(status_code=409, detail="Investigation is not claimable")
     return transition_investigation(
@@ -221,6 +228,27 @@ def resume_failed(investigation_id: UUID) -> Investigation:
     if investigation.checkpoint is None:
         raise HTTPException(status_code=409, detail="No checkpoint available to resume")
     return transition_investigation(investigation_id, TransitionRequest(event=TransitionEvent.RESUME))
+
+
+def restart_failed(investigation_id: UUID) -> Investigation:
+    """Re-queue a failed investigation with no usable checkpoint (worker can claim again)."""
+    investigation = get_investigation(investigation_id)
+    if investigation.status != InvestigationStatus.FAILED:
+        raise HTTPException(status_code=409, detail="Only failed investigations can use /restart")
+    investigation.status = InvestigationStatus.CREATED
+    investigation.failure_reason = None
+    investigation.blocked_reason = None
+    investigation.auth_pause = None
+    investigation.checkpoint = None
+    investigation.updated_at = datetime.now(UTC)
+    store.investigations[investigation.id] = investigation
+    session = get_or_create_session(investigation)
+    session.session_status = SessionStatus.NOT_STARTED
+    session.auth_state = AuthState.UNKNOWN
+    session.human_ready_at = None
+    session.checkpoint = None
+    save_session(session)
+    return investigation
 
 
 def begin_authentication(investigation_id: UUID) -> SessionPublic:

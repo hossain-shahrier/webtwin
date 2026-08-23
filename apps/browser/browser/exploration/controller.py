@@ -19,6 +19,7 @@ from webtwin_core.models import Observation
 from webtwin_core.planning import resolve_planner
 
 from browser.exploration.action_space import inventory_from_observation
+from browser.exploration.navigate import goto_resilient
 from browser.observer.settle import SettleResult, settle_after_action
 from browser.observer.snapshot import capture_observation
 
@@ -33,17 +34,16 @@ def execute_planned_action(page: Page, plan: PlannedAction) -> SettleResult:
     elif action.type.value == "input" and plan.value is not None:
         locator.first.fill(plan.value)
     elif action.type.value == "navigate" and plan.value is not None:
-        page.goto(plan.value)
+        goto_resilient(page, plan.value)
+        expect_url = plan.value.split("?")[0][-48:] if plan.value else None
     elif action.type.value == "route":
-        # Soft nav: click in-app control (History / hash) — never hard goto
         if locator.count() == 0 and plan.value and str(plan.value).startswith("#"):
             page.evaluate("(hash) => { location.hash = hash }", plan.value)
         else:
-            locator.first.click()
+            locator.first.click(timeout=10000)
         href = action.metadata.get("href") or plan.value
         if href:
-            expect_url = href.lstrip("#") if href.startswith("#") else href
-            # For hash routes, wait for hash fragment
+            expect_url = href if href.startswith("#") else href.lstrip("#")
             if href.startswith("#"):
                 expect_url = href
     elif action.type.value == "scroll":
@@ -61,9 +61,9 @@ def execute_planned_action(page: Page, plan: PlannedAction) -> SettleResult:
             delta,
         )
     elif action.type.value == "click":
-        locator.first.click()
+        locator.first.click(timeout=10000)
 
-    return settle_after_action(page, expect_url_contains=expect_url)
+    return settle_after_action(page, expect_url_contains=None if action.type.value == "navigate" else expect_url)
 
 
 class ExplorationController:
@@ -117,13 +117,31 @@ class ExplorationController:
         if safety != SafetyClass.SAFE:
             self.safety_violations += 1
             raise RuntimeError(f"Refusing to execute {safety.value} action: {plan.action.target}")
-        settle = execute_planned_action(page, plan)
+        try:
+            settle = execute_planned_action(page, plan)
+        except Exception as error:
+            self.state.settle_timeouts += 1
+            if plan.action.type.value == "route":
+                self.state.soft_nav_failures += 1
+            self.state.mark_tested(plan.action, plan.value)
+            self.budget.consume_action()
+            self.plans.append(plan)
+            self.last_settle = SettleResult(
+                ok=False,
+                reason=str(error)[:240],
+                elapsed_ms=0,
+            )
+            return self.last_settle
         self.last_settle = settle
         if not settle.ok:
             self.state.settle_timeouts += 1
             if plan.action.type.value == "route":
                 self.state.soft_nav_failures += 1
-            raise RuntimeError(f"Settle failed: {settle.reason}")
+            # Live sites: record failure but keep exploring (auditable settle event)
+            self.state.mark_tested(plan.action, plan.value)
+            self.budget.consume_action()
+            self.plans.append(plan)
+            return settle
         self.state.mark_tested(plan.action, plan.value)
         self.budget.consume_action()
         if plan.action.type.value == "scroll":

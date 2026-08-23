@@ -20,6 +20,11 @@ node_modules
 .self-healing/
 .migrate-runs/
 
+# Local WebTwin session / artifact secrets (never commit)
+.webtwin/
+**/storage_state*.json
+apply_polito_storage.json
+
 # IDEs and editors
 /.idea
 .project

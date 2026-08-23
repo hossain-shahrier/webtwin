@@ -7,7 +7,7 @@
       body { font-family: Georgia, serif; margin: 1rem; background: #eef5f0; }
       #list { height: 240px; overflow: auto; border: 1px solid #335; }
       .row { height: 40px; padding: 0.5rem; border-bottom: 1px solid #ccd; }
-      .hidden { display: none; }
+      .hidden { display: none !important; }
       label { display: block; margin-top: 1rem; }
     </style>
   </head>
@@ -15,11 +15,11 @@
     <div id="root">
       <h1>Candidates</h1>
       <div id="list" data-scroll-container data-testid="virtual-list"></div>
-      <div id="detail" class="hidden">
+      <div id="detail">
         <label for="remote_ok">Remote OK?</label>
         <select id="remote_ok" name="remote_ok" data-testid="remote_ok">
-          <option value="no">No</option>
           <option value="yes">Yes</option>
+          <option value="no">No</option>
         </select>
         <p id="visa_note" class="hidden" data-testid="visa_note">Visa sponsorship required</p>
       </div>
@@ -30,17 +30,11 @@
         const row = document.createElement("div");
         row.className = "row";
         row.textContent = `Candidate ${i + 1}`;
-        row.dataset.testid = `row-${i}`;
         if (i === 28) {
-          row.innerHTML = `<button type="button" id="open_row" name="open_row" data-testid="open_row">Open field #29</button>`;
+          row.innerHTML = `<button type="button" id="open_row" name="open_row" data-testid="open_row">Focus #29</button>`;
         }
         list.appendChild(row);
       }
-      list.addEventListener("click", (e) => {
-        if (e.target && e.target.id === "open_row") {
-          document.getElementById("detail").classList.remove("hidden");
-        }
-      });
       document.getElementById("remote_ok").addEventListener("change", (e) => {
         document.getElementById("visa_note").classList.toggle("hidden", e.target.value !== "no");
       });

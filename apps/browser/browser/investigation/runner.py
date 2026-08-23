@@ -21,10 +21,12 @@ from webtwin_core.models import (
 
 from browser.client.api import ApiClient
 from browser.exploration.controller import ExplorationController
+from browser.exploration.navigate import goto_resilient
 from browser.observer.snapshot import capture_observation
 from browser.recorder.timeline import TimelineRecorder
 from browser.session.manager import SessionManager
 from browser.session.auth_wait import wait_for_dashboard_auth_resume
+from browser.session.consent import dismiss_consent_banners
 from browser.session.store import SessionStore
 from browser.verification.runner import verify_rule_on_page
 
@@ -150,9 +152,13 @@ def _exploration_loop(
 
         settle = controller.apply_plan(page, plan)
         actions_taken += 1
+        if plan.action.type.value in {"navigate", "route"}:
+            dismiss_consent_banners(page)
         event_type = TimelineEventType.ROUTE if plan.action.type.value == "route" else TimelineEventType.SELECT
         if plan.action.type.value == "scroll":
             event_type = TimelineEventType.SCROLL
+        if plan.action.type.value == "navigate":
+            event_type = TimelineEventType.NAVIGATE
         timeline.record(
             client.record_event(
                 TimelineEvent(
@@ -275,7 +281,9 @@ def run_exploration_and_verification(
         spa_mode=use_spa,
     )
 
-    client.upsert_session(investigation.id, auth_state=AuthState.UNKNOWN)
+    # Don't wipe an in-progress auth pause when reclaiming auth_required.
+    if investigation.status != InvestigationStatus.AUTH_REQUIRED:
+        client.upsert_session(investigation.id, auth_state=AuthState.UNKNOWN)
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=headless)
@@ -285,7 +293,8 @@ def run_exploration_and_verification(
         network.attach(page)
 
         try:
-            page.goto(target_url)
+            goto_resilient(page, target_url)
+            dismiss_consent_banners(page)
             _handle_auth(page, context, client, investigation.id, session_manager, session_store)
             actions_taken = _exploration_loop(
                 page, client, investigation.id, controller, timeline, network=network
@@ -296,17 +305,31 @@ def run_exploration_and_verification(
             controller.known_rules = candidate_rules
 
             # Return to baseline route before verification (soft when SPA)
+            baseline = "#/a" if use_spa else None
             if use_spa:
-                soft_return_to_route(page, "#/")
+                soft_return_to_route(page, baseline or "#/")
             else:
-                page.goto(target_url)
-                page.wait_for_timeout(100)
+                goto_resilient(page, target_url)
+                dismiss_consent_banners(page)
             page_fields = {
                 element.stable_key or element.name or element.selector.lstrip("#")
                 for element in capture_observation(page, investigation.id, with_screenshot=False).elements
             }
 
             for rule in candidate_rules:
+                if use_spa:
+                    # Soft-nav across known routes to locate condition field
+                    for nav in ("#/a", "#/b", "#/c", "#/form", "#/"):
+                        soft_return_to_route(page, nav)
+                        page_fields = {
+                            element.stable_key or element.name or element.selector.lstrip("#")
+                            for element in capture_observation(
+                                page, investigation.id, with_screenshot=False
+                            ).elements
+                        }
+                        if rule.condition.field in page_fields or rule.condition.operator == "clicked":
+                            baseline = nav
+                            break
                 if rule.condition.field not in page_fields and rule.condition.operator != "clicked":
                     verified_rules.append(rule)
                     continue
@@ -317,7 +340,7 @@ def run_exploration_and_verification(
                     investigation.id,
                     rule,
                     spa_mode=use_spa,
-                    baseline_route="#/" if use_spa else None,
+                    baseline_route=baseline if use_spa else None,
                 )
                 verified_rules.append(updated)
                 actions_taken += 2
@@ -420,7 +443,8 @@ def run_discovery_and_verification(
         network.attach(page)
 
         try:
-            page.goto(target.as_uri())
+            goto_resilient(page, target.as_uri())
+            dismiss_consent_banners(page)
             actions_taken += 1
             _handle_auth(page, context, client, investigation.id, session_manager, session_store)
 
