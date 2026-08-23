@@ -21,6 +21,32 @@ def main() -> None:
         "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS environment VARCHAR(128)",
         "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS role_scope VARCHAR(128)",
         "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS spa_mode BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS application_key VARCHAR(256)",
+        "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS exploration_policy VARCHAR(64)",
+        "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS investigation_scope VARCHAR(64)",
+        "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS url_prefix TEXT",
+        "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS start_url TEXT",
+        "CREATE TABLE IF NOT EXISTS discovered_links ("
+        "id UUID PRIMARY KEY, "
+        "investigation_id UUID NOT NULL REFERENCES investigations(id) ON DELETE CASCADE, "
+        "from_screen_id TEXT NOT NULL, "
+        "to_screen_id TEXT, "
+        "href TEXT NOT NULL, "
+        "label TEXT, "
+        "selector TEXT, "
+        "link_type VARCHAR(32) NOT NULL DEFAULT 'navigate', "
+        "visited BOOLEAN DEFAULT FALSE, "
+        "discovered_at TIMESTAMPTZ NOT NULL, "
+        "CONSTRAINT uq_discovered_link UNIQUE (investigation_id, from_screen_id, href)"
+        ")",
+        "CREATE INDEX IF NOT EXISTS ix_discovered_links_investigation ON discovered_links(investigation_id)",
+        "CREATE TABLE IF NOT EXISTS application_catalogs ("
+        "application_key VARCHAR(256) PRIMARY KEY, "
+        "payload JSONB NOT NULL, "
+        "golden_version VARCHAR(128), "
+        "golden_payload JSONB, "
+        "updated_at TIMESTAMPTZ NOT NULL"
+        ")",
         "ALTER TABLE observations ADD COLUMN IF NOT EXISTS route JSONB",
         "ALTER TABLE observations ADD COLUMN IF NOT EXISTS framework_hints JSONB DEFAULT '{}'::jsonb",
         "ALTER TABLE observation_elements ADD COLUMN IF NOT EXISTS testid TEXT",

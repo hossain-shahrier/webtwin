@@ -1,14 +1,31 @@
 from __future__ import annotations
 
+import inspect
+
 from webtwin_core.exploration.actions import ActionInventory
 from webtwin_core.exploration.policy import (
     PlannedAction,
     PolicyName,
-    choose_next_action,
+    choose_next_action as _choose_next_action,
 )
 from webtwin_core.exploration.state import ExplorationState
 from webtwin_core.models.rules import BusinessRule
 from webtwin_core.planning.protocol import ProposedExperiment
+
+
+def _policy_choose_next_action(
+    policy: PolicyName | str,
+    state: ExplorationState,
+    inventory: ActionInventory,
+    known_rules: list[BusinessRule] | None,
+) -> PlannedAction | None:
+    """Call policy chooser; tolerate older webtwin_core without known_rules param."""
+    params = inspect.signature(_choose_next_action).parameters
+    if "known_rules" in params:
+        return _choose_next_action(
+            policy, state, inventory, known_rules=known_rules or []
+        )
+    return _choose_next_action(policy, state, inventory)
 
 
 class DeterministicPlanner:
@@ -25,8 +42,9 @@ class DeterministicPlanner:
         *,
         known_rules: list[BusinessRule] | None = None,
     ) -> PlannedAction | None:
-        _ = known_rules
-        return choose_next_action(self.policy, state, inventory)
+        return _policy_choose_next_action(
+            self.policy, state, inventory, known_rules
+        )
 
     def propose_experiments(
         self,

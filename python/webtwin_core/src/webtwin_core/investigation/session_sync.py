@@ -7,6 +7,13 @@ def session_status_for_investigation(status: InvestigationStatus) -> SessionStat
         return SessionStatus.AUTH_REQUIRED
     if status == InvestigationStatus.AUTHENTICATED:
         return SessionStatus.AUTHENTICATED
+    if status in {
+        InvestigationStatus.EXPLORING,
+        InvestigationStatus.OBSERVING,
+        InvestigationStatus.GENERATING_RULE,
+        InvestigationStatus.VERIFYING,
+    }:
+        return SessionStatus.IN_PROGRESS
     if status == InvestigationStatus.FAILED:
         return SessionStatus.FAILED
     if status == InvestigationStatus.BLOCKED:

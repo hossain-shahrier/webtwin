@@ -1,13 +1,16 @@
 from playwright.sync_api import Page
+from webtwin_core.exploration.budget import ExplorationBudget
 from webtwin_core.models import BusinessRule
 from webtwin_core.verification.engine import (
     VerificationExperimentResult,
     evaluate_expectations,
+    evaluate_network_expectations,
     generate_verification_experiments,
     summarize_verification,
 )
 
 from browser.client.api import ApiClient
+from browser.observer.network import NetworkCollector
 from browser.observer.settle import settle_after_action
 from browser.observer.snapshot import capture_observation
 
@@ -81,11 +84,26 @@ def verify_rule_on_page(
     *,
     spa_mode: bool = False,
     baseline_route: str | None = None,
+    budget: ExplorationBudget | None = None,
+    network: NetworkCollector | None = None,
 ) -> BusinessRule:
     experiments = generate_verification_experiments(rule)
     results: list[VerificationExperimentResult] = []
 
     for index, experiment in enumerate(experiments):
+        if budget is not None and not budget.can_run_experiment():
+            results.append(
+                VerificationExperimentResult(
+                    experiment_id=experiment.id,
+                    passed=False,
+                    details="verification budget exhausted (max_experiments)",
+                )
+            )
+            break
+        if budget is not None:
+            budget.consume_experiment()
+
+        events_before = len(network.events) if network is not None else 0
         try:
             if spa_mode and baseline_route:
                 soft_return_to_route(page, baseline_route)
@@ -98,6 +116,13 @@ def verify_rule_on_page(
                 observation.to_application_state(sequence=sequence_start + index)
             )
             passed, details = evaluate_expectations(state, experiment.expectations)
+            if passed and experiment.network_expectations and network is not None:
+                new_events = network.events[events_before:]
+                net_passed, net_details = evaluate_network_expectations(
+                    new_events, experiment.network_expectations
+                )
+                if not net_passed:
+                    passed, details = False, net_details
         except Exception as error:
             passed, details = False, f"verification error: {error}"
             observation = None

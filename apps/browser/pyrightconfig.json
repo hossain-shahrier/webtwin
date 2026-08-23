@@ -1,0 +1,8 @@
+{
+  "include": ["browser"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": ["../../python/webtwin_core/src"],
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "basic"
+}

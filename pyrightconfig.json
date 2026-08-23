@@ -1,0 +1,35 @@
+{
+  "executionEnvironments": [
+    {
+      "root": "apps/browser",
+      "extraPaths": [
+        "apps/browser/.venv/lib/python3.13/site-packages",
+        "python/webtwin_core/src"
+      ],
+      "pythonVersion": "3.13"
+    },
+    {
+      "root": "apps/api",
+      "extraPaths": [
+        "apps/api/.venv/lib/python3.13/site-packages",
+        "python/webtwin_core/src"
+      ],
+      "pythonVersion": "3.13"
+    },
+    {
+      "root": "python/webtwin_core",
+      "extraPaths": ["python/webtwin_core/src"],
+      "pythonVersion": "3.13"
+    },
+    {
+      "root": "tests",
+      "extraPaths": [
+        "apps/browser/.venv/lib/python3.13/site-packages",
+        "python/webtwin_core/src",
+        "apps/browser"
+      ],
+      "pythonVersion": "3.13"
+    }
+  ],
+  "typeCheckingMode": "basic"
+}

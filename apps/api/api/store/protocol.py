@@ -44,5 +44,6 @@ class Store(Protocol):
     evaluation_runs: EntityMap
     workflows: EntityMap
     network_events: EntityMap
+    application_catalogs: dict
 
     def clear(self) -> None: ...

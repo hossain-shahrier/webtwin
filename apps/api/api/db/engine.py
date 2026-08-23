@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from api.db.schema import Base
 
-DEFAULT_DATABASE_URL = "postgresql+psycopg://webtwin:webtwin@127.0.0.1:5432/webtwin"
+DEFAULT_DATABASE_URL = "postgresql+psycopg://webtwin:webtwin@127.0.0.1:5434/webtwin"
 
 
 def get_database_url() -> str:

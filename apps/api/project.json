@@ -30,7 +30,7 @@
     "migrate": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "PYTHONPATH=. uv run python scripts/migrate.py",
+        "command": "PYTHONPATH=. DATABASE_URL=postgresql+psycopg://webtwin:webtwin@127.0.0.1:5434/webtwin uv run python scripts/migrate.py",
         "cwd": "apps/api"
       }
     },
@@ -38,7 +38,7 @@
       "executor": "nx:run-commands",
       "continuous": true,
       "options": {
-        "command": "WEBTWIN_STORE=postgres PORT=8060 uv run python main.py",
+        "command": "WEBTWIN_STORE=postgres DATABASE_URL=postgresql+psycopg://webtwin:webtwin@127.0.0.1:5434/webtwin PORT=8060 uv run python main.py",
         "cwd": "apps/api"
       }
     },

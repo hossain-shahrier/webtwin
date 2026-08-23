@@ -2,7 +2,7 @@ import './global.css';
 
 export const metadata = {
   title: 'WebTwin',
-  description: 'Evidence-grounded autonomous software investigation',
+  description: 'Evidence-grounded software application investigation',
 };
 
 export default function RootLayout({

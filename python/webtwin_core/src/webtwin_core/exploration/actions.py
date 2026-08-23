@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from webtwin_core.models.investigation import InvestigationGoal
 from webtwin_core.models.observation import ElementSnapshot, Observation
+from webtwin_core.reference_system.entities import match_entity_name
 
 
 class ActionType(StrEnum):
@@ -117,6 +118,25 @@ def _navigate_priority(base_url: str, absolute: str) -> int:
     return score
 
 
+def _is_goal_relevant(
+    *,
+    scope: str,
+    target: str,
+    label: str | None = None,
+    text: str | None = None,
+    focus_entity: str | None = None,
+) -> bool:
+    blob = " ".join([target, label or "", text or ""]).lower()
+    if scope and scope in blob:
+        return True
+    if focus_entity and focus_entity.lower() in blob:
+        return True
+    # Prefer form fields that map to a known business entity
+    return match_entity_name(target, label, text, focus_entity) is not None and bool(
+        scope or focus_entity
+    )
+
+
 def build_action_inventory(
     observation: Observation,
     goal: InvestigationGoal | None = None,
@@ -126,6 +146,11 @@ def build_action_inventory(
     """Derive candidate actions from an observation — no LLM."""
     actions: list[ExploratoryAction] = []
     scope = (goal.scope or "").lower() if goal else ""
+    focus_entity = match_entity_name(
+        goal.target if goal else None,
+        goal.scope if goal else None,
+        goal.description if goal else None,
+    )
 
     for element in observation.elements:
         if not element.visible or not element.enabled:
@@ -175,6 +200,17 @@ def build_action_inventory(
                 )
             continue
         if element.tag == "select":
+            relevant = _is_goal_relevant(
+                scope=scope,
+                target=target,
+                label=element.label,
+                text=element.text,
+                focus_entity=focus_entity,
+            )
+            # Without an explicit goal, still prefer entity-mapped form controls
+            if not scope and not focus_entity:
+                relevant = match_entity_name(target, element.label, element.text) is not None
+            entity = match_entity_name(target, element.label, element.text) or ""
             actions.append(
                 ExploratoryAction(
                     type=ActionType.SELECT,
@@ -182,12 +218,26 @@ def build_action_inventory(
                     selector=element.selector,
                     values=list(element.options),
                     label=element.label,
+                    metadata={
+                        "goal_relevant": str(relevant),
+                        "entity": entity,
+                    },
                 )
             )
         elif element.tag in {"input", "textarea"}:
             input_type = (element.input_type or "text").lower()
             if input_type in {"hidden", "submit", "button", "reset", "file", "password"}:
                 continue
+            relevant = _is_goal_relevant(
+                scope=scope,
+                target=target,
+                label=element.label,
+                text=element.text,
+                focus_entity=focus_entity,
+            )
+            if not scope and not focus_entity:
+                relevant = match_entity_name(target, element.label, element.text) is not None
+            entity = match_entity_name(target, element.label, element.text) or ""
             actions.append(
                 ExploratoryAction(
                     type=ActionType.INPUT,
@@ -196,7 +246,8 @@ def build_action_inventory(
                     label=element.label,
                     metadata={
                         "input_type": input_type,
-                        "goal_relevant": str(bool(scope and scope in target.lower())),
+                        "goal_relevant": str(relevant),
+                        "entity": entity,
                     },
                 )
             )
@@ -234,7 +285,17 @@ def build_action_inventory(
         )
 
     def _sort_key(action: ExploratoryAction) -> tuple:
-        scope_miss = 0 if scope and scope in action.target.lower() else 1
+        blob = " ".join(
+            [
+                action.target,
+                action.label or "",
+                " ".join(action.values[:8]),
+                action.metadata.get("href", ""),
+            ]
+        ).lower()
+        scope_miss = 0 if (not scope or scope in blob) else 1
+        if action.metadata.get("goal_relevant") == "True":
+            scope_miss = 0
         if action.type in {ActionType.NAVIGATE, ActionType.ROUTE}:
             try:
                 priority = int(action.metadata.get("priority", "99"))

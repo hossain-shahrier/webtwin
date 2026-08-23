@@ -16,6 +16,7 @@ from webtwin_core.exploration import (
     filter_automatable,
 )
 from webtwin_core.models import Observation
+from webtwin_core.models.investigation import InvestigationGoal
 from webtwin_core.planning import resolve_planner
 
 from browser.exploration.action_space import inventory_from_observation
@@ -74,10 +75,12 @@ class ExplorationController:
         budget: ExplorationBudget | None = None,
         seed: int | None = None,
         spa_mode: bool = False,
+        goal: InvestigationGoal | None = None,
+        url_prefix: str | None = None,
     ) -> None:
         self.policy = policy
         self.budget = budget or ExplorationBudget(max_actions=20)
-        self.state = ExplorationState()
+        self.state = ExplorationState(url_prefix=url_prefix)
         self._started = time.monotonic()
         self._rng = random.Random(seed) if seed is not None else random.Random()
         self.plans: list[PlannedAction] = []
@@ -86,6 +89,7 @@ class ExplorationController:
         self.planner = resolve_planner(policy)
         self.known_rules: list = []
         self.spa_mode = spa_mode
+        self.goal = goal
         self.last_settle: SettleResult | None = None
 
     @property
@@ -96,8 +100,17 @@ class ExplorationController:
         return capture_observation(page, investigation_id)
 
     def plan_from_observation(self, observation: Observation) -> PlannedAction | None:
-        inventory = inventory_from_observation(observation, spa_mode=self.spa_mode)
+        from webtwin_core.reference_system.site_graph import extract_discovered_links
+
+        inventory = inventory_from_observation(
+            observation, goal=self.goal, spa_mode=self.spa_mode
+        )
+        pages_before = len(self.state.pages_seen_urls)
         self.state.sync_inventory(inventory)
+        if len(self.state.pages_seen_urls) > pages_before:
+            self.budget.consume_page()
+        links = extract_discovered_links(observation, origin_url=observation.url)
+        self.state.enqueue_frontier_from_links(links, origin_url=observation.url)
         self._count_blocked_unsafe(inventory)
         return self.planner.choose_next_action(
             self.state,
@@ -123,7 +136,8 @@ class ExplorationController:
             self.state.settle_timeouts += 1
             if plan.action.type.value == "route":
                 self.state.soft_nav_failures += 1
-            self.state.mark_tested(plan.action, plan.value)
+            if plan.action.type.value not in {"navigate", "route"}:
+                self.state.mark_tested(plan.action, plan.value)
             self.budget.consume_action()
             self.plans.append(plan)
             self.last_settle = SettleResult(
@@ -137,8 +151,8 @@ class ExplorationController:
             self.state.settle_timeouts += 1
             if plan.action.type.value == "route":
                 self.state.soft_nav_failures += 1
-            # Live sites: record failure but keep exploring (auditable settle event)
-            self.state.mark_tested(plan.action, plan.value)
+            if plan.action.type.value not in {"navigate", "route"}:
+                self.state.mark_tested(plan.action, plan.value)
             self.budget.consume_action()
             self.plans.append(plan)
             return settle
@@ -146,6 +160,8 @@ class ExplorationController:
         self.budget.consume_action()
         if plan.action.type.value == "scroll":
             self.budget.consume_scroll()
+        if plan.frontier_target and settle.ok:
+            self.state.remove_from_frontier(plan.frontier_target)
         self.plans.append(plan)
         return settle
 

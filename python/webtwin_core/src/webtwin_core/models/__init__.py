@@ -8,7 +8,15 @@ from webtwin_core.models.evidence import (
     evidence_sensitivity,
 )
 from webtwin_core.models.events import TimelineEvent, TimelineEventType
-from webtwin_core.models.auth import AuthPauseMetadata, AuthPauseReason, AuthState, SessionStatus
+from webtwin_core.models.auth import (
+    AuthFormField,
+    AuthFormSchema,
+    AuthFormSubmission,
+    AuthPauseMetadata,
+    AuthPauseReason,
+    AuthState,
+    SessionStatus,
+)
 from webtwin_core.models.investigation import (
     Investigation,
     InvestigationCheckpoint,
@@ -27,6 +35,9 @@ from webtwin_core.models.state import ApplicationState, FieldState
 from webtwin_core.models.workflow import Workflow, WorkflowStep
 
 __all__ = [
+    "AuthFormField",
+    "AuthFormSchema",
+    "AuthFormSubmission",
     "AuthPauseMetadata",
     "AuthPauseReason",
     "AuthState",

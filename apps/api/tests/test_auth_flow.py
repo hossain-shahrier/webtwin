@@ -77,3 +77,63 @@ def test_investigation_detail_includes_session(client: TestClient) -> None:
     assert detail.status_code == 200
     body = detail.json()
     assert body["session"]["session_status"] == "auth_required"
+
+
+def test_dynamic_auth_form_submit_and_pending_fill(client: TestClient) -> None:
+    investigation_id = _create(client)
+    _to_auth_required(client, investigation_id)
+
+    schema = {
+        "page_kind": "login",
+        "url": "https://example.com/login",
+        "title": "Sign in",
+        "fields": [
+            {
+                "key": "email",
+                "label": "Email",
+                "input_type": "email",
+                "required": True,
+                "selector": 'input[name="email"]',
+                "is_secret": False,
+            },
+            {
+                "key": "password",
+                "label": "Password",
+                "input_type": "password",
+                "required": True,
+                "selector": 'input[name="password"]',
+                "is_secret": True,
+            },
+        ],
+        "submit_label": "Sign in",
+        "supports_dummy": True,
+    }
+    put = client.put(f"/investigations/{investigation_id}/auth/form", json=schema)
+    assert put.status_code == 200
+    assert put.json()["page_kind"] == "login"
+
+    got = client.get(f"/investigations/{investigation_id}/auth/form")
+    assert got.status_code == 200
+    assert len(got.json()["form"]["fields"]) == 2
+
+    submitted = client.post(
+        f"/investigations/{investigation_id}/auth/submit-form",
+        json={"use_dummy": True},
+    )
+    assert submitted.status_code == 200
+    assert submitted.json()["status"] == "pending"
+    assert "email" in submitted.json()["values"]
+
+    pending = client.get(f"/investigations/{investigation_id}/auth/pending-fill")
+    assert pending.status_code == 200
+    assert pending.json()["submission"]["status"] == "pending"
+
+    applied = client.post(
+        f"/investigations/{investigation_id}/auth/fill-applied",
+        json={"status": "applied"},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["status"] == "applied"
+
+    cleared = client.get(f"/investigations/{investigation_id}/auth/pending-fill")
+    assert cleared.json()["submission"] is None

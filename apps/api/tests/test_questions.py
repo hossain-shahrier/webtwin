@@ -38,3 +38,61 @@ def test_ask_question_with_citations() -> None:
     answer = svc.ask_question(investigation.id, "Why does reason appear?")
     assert answer.refused is False
     assert answer.citations[0].rule_id == rule.id
+
+
+def test_export_cursor_context_includes_verified_rules() -> None:
+    store.clear()
+    from webtwin_core.models import Investigation
+
+    investigation = svc.create_investigation(
+        Investigation(goal="export test", target_url="https://example.com/app")
+    )
+    evidence = Evidence(
+        investigation_id=investigation.id,
+        type=EvidenceType.DOM,
+        payload={"summary": "condition shows reason"},
+    )
+    store.evidence[evidence.id] = evidence
+    rule = BusinessRule(
+        investigation_id=investigation.id,
+        name="condition affects reason visibility",
+        condition=RuleCondition(field="condition", operator="equals", value="no"),
+        effect=RuleEffect(field="reason", visible=True),
+        confidence=0.95,
+        status=RuleStatus.VERIFIED,
+        evidence_ids=[evidence.id],
+    )
+    store.rules[rule.id] = rule
+
+    payload = svc.export_cursor_context(investigation.id)
+    assert "WebTwin AI context" in payload["markdown"]
+    assert "condition affects reason visibility" in payload["markdown"]
+    assert len(payload["verified_rules"]) == 1
+    assert payload["ai_spec_url"].endswith("/export/ai-spec")
+    assert "Reference system overview" not in payload["markdown"]
+
+
+def test_export_ai_spec_is_compact() -> None:
+    store.clear()
+    from webtwin_core.models import Investigation
+
+    investigation = svc.create_investigation(
+        Investigation(goal="ai export", target_url="https://example.com/app")
+    )
+    payload = svc.export_ai_spec(investigation.id)
+    assert "WebTwin AI context" in payload["markdown"]
+    assert "routes" in payload
+    assert "interactions" in payload
+    assert payload["full_clone_spec_url"].endswith("/export/clone-spec")
+
+
+def test_get_clone_scorecard() -> None:
+    store.clear()
+    from webtwin_core.models import Investigation
+
+    investigation = svc.create_investigation(
+        Investigation(goal="scorecard", target_url="https://example.com/form")
+    )
+    scorecard = svc.get_clone_scorecard(investigation.id)
+    assert scorecard["verified_rules"] == 0
+    assert scorecard["clone_ready"] is False

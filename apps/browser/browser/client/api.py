@@ -141,6 +141,87 @@ class ApiClient:
         response.raise_for_status()
         return [Investigation.model_validate(item) for item in response.json()]
 
+    def upsert_auth_form(self, investigation_id: UUID, schema) -> dict:
+        response = httpx.put(
+            f"{self.base_url}/investigations/{investigation_id}/auth/form",
+            json=schema.model_dump(mode="json") if hasattr(schema, "model_dump") else schema,
+            timeout=15,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_pending_auth_fill(self, investigation_id: UUID) -> dict | None:
+        response = httpx.get(
+            f"{self.base_url}/investigations/{investigation_id}/auth/pending-fill",
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json().get("submission")
+
+    def mark_auth_fill_applied(
+        self,
+        investigation_id: UUID,
+        *,
+        status: str = "applied",
+        error: str | None = None,
+    ) -> dict:
+        response = httpx.post(
+            f"{self.base_url}/investigations/{investigation_id}/auth/fill-applied",
+            json={"status": status, "error": error},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_auth_form(self, investigation_id: UUID) -> dict | None:
+        response = httpx.get(
+            f"{self.base_url}/investigations/{investigation_id}/auth/form",
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json().get("form")
+
+    def save_exploration_progress(self, investigation_id: UUID, progress) -> dict:
+        payload = progress.model_dump(mode="json") if hasattr(progress, "model_dump") else progress
+        response = httpx.put(
+            f"{self.base_url}/investigations/{investigation_id}/exploration-progress",
+            json=payload,
+            timeout=15,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_exploration_progress(self, investigation_id: UUID) -> dict | None:
+        response = httpx.get(
+            f"{self.base_url}/investigations/{investigation_id}/exploration-progress",
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json().get("exploration")
+
+    def list_discovered_links(self, investigation_id: UUID) -> list[dict]:
+        response = httpx.get(
+            f"{self.base_url}/investigations/{investigation_id}/site-graph",
+            timeout=20,
+        )
+        if response.status_code != 200:
+            return []
+        data = response.json()
+        links: list[dict] = []
+        for edge in data.get("edges") or []:
+            links.append(
+                {
+                    "investigation_id": str(investigation_id),
+                    "from_screen_id": edge.get("from") or "/",
+                    "to_screen_id": edge.get("to"),
+                    "href": edge.get("href") or "",
+                    "visited": bool(edge.get("visited")),
+                    "link_type": edge.get("link_type") or "navigate",
+                    "selector": edge.get("selector"),
+                }
+            )
+        return links
+
     def record_metrics(self, investigation_id: UUID, run) -> object:
         from webtwin_core.evaluation.runs import EvaluationRun
 

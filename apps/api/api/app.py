@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routers import health, investigations
+from api.routers import applications, health, investigations
 
 app = FastAPI(title="WebTwin API")
 app.add_middleware(
@@ -16,3 +16,4 @@ app.add_middleware(
 )
 app.include_router(health.router)
 app.include_router(investigations.router)
+app.include_router(applications.router)

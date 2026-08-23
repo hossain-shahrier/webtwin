@@ -15,6 +15,7 @@ class VerificationExperiment(BaseModel):
     description: str
     set_fields: dict[str, str] = Field(default_factory=dict)
     expectations: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    network_expectations: dict[str, Any] = Field(default_factory=dict)
 
 
 class VerificationExperimentResult(BaseModel):
@@ -59,6 +60,7 @@ def generate_verification_experiments(rule: BusinessRule) -> list[VerificationEx
                 description=f"When {trigger} is clicked, {effect_field} should match rule effect",
                 set_fields={trigger: "__click__"},
                 expectations={effect_field: effect_expectation},
+                network_expectations={"min_events": 1},
             )
         )
         return experiments
@@ -87,6 +89,46 @@ def generate_verification_experiments(rule: BusinessRule) -> list[VerificationEx
                 expectations={effect_field: inverted},
             )
         )
+    elif rule.effect.visible is True:
+        experiments.append(
+            VerificationExperiment(
+                rule_id=rule.id,
+                description=f"When {trigger} is cleared, {effect_field} should not stay visible",
+                set_fields={trigger: ""},
+                expectations={effect_field: {"visible": False}},
+            )
+        )
+
+    # Revert experiment when no binary alternate was generated
+    if rule.condition.operator == "equals" and trigger_value and alternate is None:
+        experiments.append(
+            VerificationExperiment(
+                rule_id=rule.id,
+                description=f"Re-apply {trigger}={trigger_value} — {effect_field} should match again",
+                set_fields={trigger: trigger_value},
+                expectations={effect_field: effect_expectation},
+            )
+        )
+
+    if rule.effect.required is not None:
+        experiments.append(
+            VerificationExperiment(
+                rule_id=rule.id,
+                description=f"Required state for {effect_field} when {trigger}={trigger_value}",
+                set_fields={trigger: trigger_value},
+                expectations={effect_field: {"required": rule.effect.required}},
+            )
+        )
+
+    if rule.effect.enabled is not None:
+        experiments.append(
+            VerificationExperiment(
+                rule_id=rule.id,
+                description=f"Enabled state for {effect_field} when {trigger}={trigger_value}",
+                set_fields={trigger: trigger_value},
+                expectations={effect_field: {"enabled": rule.effect.enabled}},
+            )
+        )
 
     return experiments
 
@@ -102,7 +144,8 @@ def evaluate_expectations(state: ApplicationState, expectations: dict[str, dict[
     for field_name, expected in expectations.items():
         actual = _field_from_state(state, field_name)
         if actual is None:
-            return False, f"Field {field_name} not found in observation"
+            # Missing DOM node ≈ not visible / not required (SPA remounts, hide rules)
+            actual = FieldState(name=field_name, visible=False, enabled=False, required=False)
 
         for attribute, expected_value in expected.items():
             actual_value = getattr(actual, attribute)
@@ -112,6 +155,30 @@ def evaluate_expectations(state: ApplicationState, expectations: dict[str, dict[
                 )
 
     return True, "Expectations met"
+
+
+def evaluate_network_expectations(
+    events: list[Any],
+    expectations: dict[str, Any],
+) -> tuple[bool, str]:
+    if not expectations:
+        return True, "No network expectations"
+    min_events = int(expectations.get("min_events", 0))
+    if min_events and len(events) < min_events:
+        return False, f"Expected at least {min_events} network event(s), got {len(events)}"
+    status_codes = expectations.get("status_codes")
+    if status_codes:
+        actual = {event.status_code for event in events if getattr(event, "status_code", None) is not None}
+        expected = set(status_codes)
+        if not actual & expected:
+            return False, f"Expected status codes {sorted(expected)}, got {sorted(actual)}"
+    methods = expectations.get("methods")
+    if methods:
+        actual_methods = {str(getattr(event, "method", "")).upper() for event in events}
+        expected_methods = {str(item).upper() for item in methods}
+        if not actual_methods & expected_methods:
+            return False, f"Expected methods {sorted(expected_methods)}, got {sorted(actual_methods)}"
+    return True, "Network expectations met"
 
 
 def observation_to_state(observation: Observation, sequence: int) -> ApplicationState:

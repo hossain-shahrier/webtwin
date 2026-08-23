@@ -31,12 +31,30 @@ class ExplorationBudget(BaseModel):
         if self.scrolls_used >= self.max_scrolls:
             # scrolls alone don't exhaust — only when combined with action budget
             pass
-        if elapsed_seconds >= self.max_duration_seconds:
+        if self.max_duration_seconds > 0 and elapsed_seconds >= self.max_duration_seconds:
             return True
         return False
 
     def consume_action(self) -> None:
         self.actions_used += 1
 
+    def consume_experiment(self) -> None:
+        self.experiments_used += 1
+
+    def can_run_experiment(self) -> bool:
+        return self.experiments_used < self.max_experiments
+
+    def consume_page(self) -> None:
+        self.pages_seen += 1
+
     def consume_scroll(self) -> None:
         self.scrolls_used += 1
+
+
+def budget_for_policy(policy: str) -> ExplorationBudget:
+    # max_duration_seconds=0 → no wall-clock limit (action/page caps still apply).
+    if policy == "site_map":
+        return ExplorationBudget(max_pages=80, max_actions=300, max_duration_seconds=0)
+    if policy == "information_gain":
+        return ExplorationBudget(max_pages=20, max_actions=100, max_duration_seconds=0)
+    return ExplorationBudget(max_pages=20, max_actions=100, max_duration_seconds=0)

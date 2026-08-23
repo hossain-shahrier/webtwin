@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
 from webtwin_core.exploration.actions import ActionInventory, ActionType, ExploratoryAction
 from webtwin_core.models.rules import BusinessRule
+
+if TYPE_CHECKING:
+    from webtwin_core.reference_system.site_graph import DiscoveredLink, LinkType
 
 
 def route_key(url_or_href: str) -> str:
@@ -38,6 +42,12 @@ class TargetCoverage(BaseModel):
         return not self.untested_values and bool(self.possible_values)
 
 
+class FrontierLink(BaseModel):
+    from_screen_id: str
+    to_screen_id: str
+    href: str
+
+
 class ExplorationState(BaseModel):
     """What the investigator knows about explored vs unknown behavior."""
 
@@ -53,8 +63,36 @@ class ExplorationState(BaseModel):
     soft_nav_failures: int = 0
     scrolls_used: int = 0
     actions_taken: int = 0
+    consecutive_no_diff: int = 0
+    visible_field_targets: list[str] = Field(default_factory=list)
+    explored_field_targets: list[str] = Field(default_factory=list)
+    frontier: list[str] = Field(default_factory=list)
+    link_targets: dict[str, FrontierLink] = Field(default_factory=dict)
+    url_prefix: str | None = None
+
+    def sync_visible_fields(self, inventory: ActionInventory) -> None:
+        for action in inventory.actions:
+            if action.type not in {ActionType.SELECT, ActionType.INPUT}:
+                continue
+            if action.target not in self.visible_field_targets:
+                self.visible_field_targets.append(action.target)
+
+    def mark_field_explored(self, target: str) -> None:
+        if target not in self.explored_field_targets:
+            self.explored_field_targets.append(target)
+
+    def record_diff_result(self, change_count: int) -> None:
+        if change_count > 0:
+            self.consecutive_no_diff = 0
+        else:
+            self.consecutive_no_diff += 1
+
+    def unexplored_form_fields(self) -> list[str]:
+        explored = set(self.explored_field_targets)
+        return [target for target in self.visible_field_targets if target not in explored]
 
     def sync_inventory(self, inventory: ActionInventory) -> None:
+        self.sync_visible_fields(inventory)
         self.url = inventory.url
         if inventory.url and inventory.url not in self.pages_seen_urls:
             self.pages_seen_urls.append(inventory.url)
@@ -97,6 +135,8 @@ class ExplorationState(BaseModel):
                 coverage.tested_values.append(value)
             if value not in coverage.possible_values:
                 coverage.possible_values.append(value)
+        if action.type in {ActionType.SELECT, ActionType.INPUT}:
+            self.mark_field_explored(action.target)
 
     def register_rules(self, rules: list[BusinessRule]) -> None:
         for rule in rules:
@@ -167,3 +207,75 @@ class ExplorationState(BaseModel):
 
     def state_coverage(self) -> int:
         return len(self.states_seen)
+
+    def _screen_visited(self, screen_id: str) -> bool:
+        from webtwin_core.reference_system.site_graph import normalize_screen_id
+
+        normalized = normalize_screen_id(screen_id)
+        for url in self.pages_seen_urls:
+            if normalize_screen_id(route_key(url)) == normalized:
+                return True
+        return any(normalize_screen_id(route) == normalized for route in self.routes_seen)
+
+    def _matches_url_prefix(self, screen_id: str) -> bool:
+        if not self.url_prefix:
+            return True
+        prefix = self.url_prefix if self.url_prefix.startswith("/") else f"/{self.url_prefix}"
+        from webtwin_core.reference_system.site_graph import normalize_screen_id
+
+        normalized = normalize_screen_id(screen_id)
+        normalized_prefix = normalize_screen_id(prefix)
+        return normalized == normalized_prefix or normalized.startswith(f"{normalized_prefix}/")
+
+    def remove_from_frontier(self, screen_id: str) -> None:
+        from webtwin_core.reference_system.site_graph import normalize_screen_id
+
+        normalized = normalize_screen_id(screen_id)
+        self.frontier = [
+            item for item in self.frontier if normalize_screen_id(item) != normalized
+        ]
+        self.link_targets.pop(normalized, None)
+
+    def rotate_frontier(self) -> None:
+        if len(self.frontier) > 1:
+            self.frontier.append(self.frontier.pop(0))
+
+    def enqueue_frontier_from_links(
+        self,
+        links: list["DiscoveredLink"],
+        *,
+        origin_url: str,
+    ) -> None:
+        from webtwin_core.reference_system.site_graph import LinkType, navigate_priority, normalize_screen_id
+
+        candidates: list[tuple[str, int]] = []
+        for link in links:
+            if link.link_type == LinkType.EXTERNAL or not link.to_screen_id or link.visited:
+                continue
+            if not self._matches_url_prefix(link.to_screen_id):
+                continue
+            if self._screen_visited(link.to_screen_id):
+                continue
+            if link.to_screen_id in self.frontier:
+                continue
+            normalized_to = normalize_screen_id(link.to_screen_id)
+            existing = self.link_targets.get(normalized_to)
+            candidate = FrontierLink(
+                from_screen_id=link.from_screen_id,
+                to_screen_id=link.to_screen_id,
+                href=link.href,
+            )
+            if existing is None or navigate_priority(origin_url, link.href) < navigate_priority(
+                origin_url, existing.href
+            ):
+                self.link_targets[normalized_to] = candidate
+            candidates.append((link.to_screen_id, navigate_priority(origin_url, link.href)))
+        candidates.sort(key=lambda item: item[1])
+        for screen_id, _ in candidates:
+            if screen_id not in self.frontier:
+                self.frontier.append(screen_id)
+
+    def pop_frontier(self) -> str | None:
+        if not self.frontier:
+            return None
+        return self.frontier.pop(0)

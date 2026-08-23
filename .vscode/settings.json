@@ -1,4 +1,19 @@
 {
   "typescript.tsdk": "node_modules/typescript/lib",
-  "typescript.enablePromptUseWorkspaceTsdk": true
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.extraPaths": [
+    "apps/browser/.venv/lib/python3.13/site-packages",
+    "apps/api/.venv/lib/python3.13/site-packages",
+    "python/webtwin_core/src",
+    "apps/browser"
+  ],
+  "python.defaultInterpreterPath": "${workspaceFolder}/apps/browser/.venv/bin/python",
+  "basedpyright.analysis.diagnosticMode": "workspace",
+  "basedpyright.analysis.extraPaths": [
+    "apps/browser/.venv/lib/python3.13/site-packages",
+    "apps/api/.venv/lib/python3.13/site-packages",
+    "python/webtwin_core/src",
+    "apps/browser"
+  ]
 }

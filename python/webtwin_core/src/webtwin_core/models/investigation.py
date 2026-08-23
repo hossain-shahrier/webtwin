@@ -70,6 +70,8 @@ class InvestigationCheckpoint(BaseModel):
     last_event: TransitionEvent | None = None
     observation_count: int = 0
     saved_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # Lean crawl cursor — see webtwin_core.exploration.progress.ExplorationProgress
+    exploration: dict | None = None
 
 
 class Investigation(BaseModel):
@@ -79,6 +81,7 @@ class Investigation(BaseModel):
     goal_spec: InvestigationGoal | None = None
     status: InvestigationStatus = InvestigationStatus.CREATED
     application_name: str | None = None
+    application_key: str | None = None
     feature_scope: str | None = None
     session_id: UUID | None = None
     auth_pause: AuthPauseMetadata | None = None
@@ -91,3 +94,7 @@ class Investigation(BaseModel):
     environment: str | None = None
     role_scope: str | None = None
     spa_mode: bool = False
+    exploration_policy: str | None = None  # site_map | information_gain | first_unexplored
+    investigation_scope: str | None = None  # full_site | catalog | product | checkout | account | custom
+    url_prefix: str | None = None
+    start_url: str | None = None

@@ -79,13 +79,48 @@ def infer_candidate_rules(
     before_fields = _field_map(before)
     after_fields = _field_map(after)
 
+    def _is_nav_chrome(name: str) -> bool:
+        lowered = name.lower()
+        return (
+            lowered.startswith("a[href")
+            or "href=" in lowered
+            or lowered in {"q", "query", "search", "s"}
+            or "menu" in lowered
+            or "nav" in lowered
+            or lowered in {"account_icon_link", "gorur_ghash"}
+            or lowered.startswith("_wp_")
+            or lowered.startswith("wc_order_attribution")
+            or "nonce" in lowered
+        )
+
+    def _is_form_control(name: str) -> bool:
+        lowered = name.lower()
+        if _is_nav_chrome(name):
+            return False
+        # Prefer named inputs/selects over raw anchors
+        return not lowered.startswith("a[")
+
     value_changes = [
         change for change in diff.changes if change.attribute == "value" and change.before != change.after
     ]
+    # SPA remounts often show up as appeared/disappeared rather than visible flips.
     visibility_changes = [
         change
         for change in diff.changes
-        if change.attribute == "visible" and change.before is False and change.after is True
+        if (
+            (change.attribute == "visible" and change.before is False and change.after is True)
+            or (change.attribute == "appeared" and change.after is True)
+        )
+        and _is_form_control(change.field)
+    ]
+    hide_changes = [
+        change
+        for change in diff.changes
+        if (
+            (change.attribute == "visible" and change.before is True and change.after is False)
+            or (change.attribute == "disappeared" and change.before is True)
+        )
+        and _is_form_control(change.field)
     ]
     required_changes = [
         change
@@ -98,9 +133,11 @@ def infer_candidate_rules(
     click_fields = [
         name
         for name in after_fields
-        if any(hint in name.lower() for hint in click_hints)
+        if any(hint in name.lower() for hint in click_hints) and _is_form_control(name)
     ]
-    primary_value_changes = value_changes if value_changes else []
+    primary_value_changes = [
+        change for change in value_changes if _is_form_control(change.field)
+    ]
 
     for visibility in visibility_changes:
         field_name = visibility.field.lower()
@@ -112,8 +149,10 @@ def infer_candidate_rules(
             continue
         for trigger_change in primary_value_changes:
             trigger = trigger_change.field
+            if trigger == visibility.field:
+                continue
             trigger_value = after_fields.get(trigger)
-            if trigger_value is None or trigger_value.value is None:
+            if trigger_value is None or trigger_value.value in (None, ""):
                 continue
             effect_field = after_fields.get(visibility.field)
             rules.append(
@@ -130,7 +169,31 @@ def infer_candidate_rules(
                         visible=True,
                         required=effect_field.required if effect_field else None,
                     ),
-                    confidence=0.6 if len(value_changes) == 1 else 0.55,
+                    confidence=0.62 if visibility.attribute == "appeared" else 0.6,
+                    status=RuleStatus.CANDIDATE,
+                )
+            )
+
+    # Hide rules: value change coincided with a form field disappearing
+    for hidden in hide_changes:
+        for trigger_change in primary_value_changes:
+            trigger = trigger_change.field
+            if trigger == hidden.field:
+                continue
+            trigger_value = after_fields.get(trigger)
+            if trigger_value is None or trigger_value.value in (None, ""):
+                continue
+            rules.append(
+                BusinessRule(
+                    investigation_id=diff.investigation_id,
+                    name=f"{trigger} hides {hidden.field}",
+                    condition=RuleCondition(
+                        field=trigger,
+                        operator="equals",
+                        value=trigger_value.value,
+                    ),
+                    effect=RuleEffect(field=hidden.field, visible=False),
+                    confidence=0.58,
                     status=RuleStatus.CANDIDATE,
                 )
             )
@@ -151,7 +214,7 @@ def infer_candidate_rules(
         # Require a real click-like control on the page — never invent a phantom "submit"
         if not click_fields:
             continue
-        if not value_changes or is_alert or not any(
+        if not primary_value_changes or is_alert or not any(
             rule.effect.field == visibility.field and rule.effect.visible is True for rule in rules
         ):
             for click_field in click_fields:
@@ -177,7 +240,7 @@ def infer_candidate_rules(
         if rule.effect.visible is True
     }
     for required in required_changes:
-        trigger = value_changes[-1].field if value_changes else None
+        trigger = primary_value_changes[-1].field if primary_value_changes else None
         if trigger is None:
             # Fall back: field became required without a clear trigger — still emit weak candidate
             rules.append(

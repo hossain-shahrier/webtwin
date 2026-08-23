@@ -62,6 +62,7 @@ def investigation_to_row(model: Investigation) -> InvestigationRow:
         target_url=model.target_url,
         status=model.status.value,
         application_name=model.application_name,
+        application_key=model.application_key,
         feature_scope=model.feature_scope,
         session_id=model.session_id,
         goal_spec=_jsonable(model.goal_spec.model_dump(mode="json")) if model.goal_spec else None,
@@ -73,6 +74,10 @@ def investigation_to_row(model: Investigation) -> InvestigationRow:
         environment=model.environment,
         role_scope=model.role_scope,
         spa_mode=model.spa_mode,
+        exploration_policy=getattr(model, "exploration_policy", None),
+        investigation_scope=getattr(model, "investigation_scope", None),
+        url_prefix=getattr(model, "url_prefix", None),
+        start_url=getattr(model, "start_url", None),
         created_at=model.created_at,
         updated_at=model.updated_at,
     )
@@ -85,6 +90,7 @@ def investigation_from_row(row: InvestigationRow) -> Investigation:
         "target_url": row.target_url,
         "status": row.status,
         "application_name": row.application_name,
+        "application_key": getattr(row, "application_key", None),
         "feature_scope": row.feature_scope,
         "session_id": row.session_id,
         "goal_spec": row.goal_spec,
@@ -96,6 +102,10 @@ def investigation_from_row(row: InvestigationRow) -> Investigation:
         "environment": row.environment,
         "role_scope": row.role_scope,
         "spa_mode": bool(getattr(row, "spa_mode", False)),
+        "exploration_policy": getattr(row, "exploration_policy", None),
+        "investigation_scope": getattr(row, "investigation_scope", None),
+        "url_prefix": getattr(row, "url_prefix", None),
+        "start_url": getattr(row, "start_url", None),
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }
@@ -653,3 +663,37 @@ def network_event_from_row(row: "NetworkEventRow") -> dict:
         "evidence_id": str(row.evidence_id) if row.evidence_id else None,
         "captured_at": row.captured_at.isoformat() if row.captured_at else None,
     }
+
+
+def discovered_link_to_row(link) -> "DiscoveredLinkRow":
+    from api.db.schema import DiscoveredLinkRow
+
+    return DiscoveredLinkRow(
+        id=link.id,
+        investigation_id=link.investigation_id,
+        from_screen_id=link.from_screen_id,
+        to_screen_id=link.to_screen_id,
+        href=link.href,
+        label=link.label,
+        selector=link.selector,
+        link_type=link.link_type.value if hasattr(link.link_type, "value") else str(link.link_type),
+        visited=link.visited,
+        discovered_at=link.discovered_at,
+    )
+
+
+def discovered_link_from_row(row: "DiscoveredLinkRow"):
+    from webtwin_core.reference_system.site_graph import DiscoveredLink, LinkType
+
+    return DiscoveredLink(
+        id=row.id,
+        investigation_id=row.investigation_id,
+        from_screen_id=row.from_screen_id,
+        to_screen_id=row.to_screen_id,
+        href=row.href,
+        label=row.label,
+        selector=row.selector,
+        link_type=LinkType(row.link_type),
+        visited=row.visited,
+        discovered_at=row.discovered_at,
+    )

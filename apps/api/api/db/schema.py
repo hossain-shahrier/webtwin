@@ -32,6 +32,7 @@ class InvestigationRow(Base):
     target_url: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     application_name: Mapped[str | None] = mapped_column(Text)
+    application_key: Mapped[str | None] = mapped_column(String(256), index=True)
     feature_scope: Mapped[str | None] = mapped_column(Text)
     session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     goal_spec: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
@@ -43,6 +44,10 @@ class InvestigationRow(Base):
     environment: Mapped[str | None] = mapped_column(String(128))
     role_scope: Mapped[str | None] = mapped_column(String(128))
     spa_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    exploration_policy: Mapped[str | None] = mapped_column(String(64))
+    investigation_scope: Mapped[str | None] = mapped_column(String(64))
+    url_prefix: Mapped[str | None] = mapped_column(Text)
+    start_url: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -352,6 +357,26 @@ class EvaluationRunRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class DiscoveredLinkRow(Base):
+    __tablename__ = "discovered_links"
+    __table_args__ = (
+        UniqueConstraint("investigation_id", "from_screen_id", "href", name="uq_discovered_link"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    investigation_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("investigations.id", ondelete="CASCADE"), index=True
+    )
+    from_screen_id: Mapped[str] = mapped_column(Text, nullable=False)
+    to_screen_id: Mapped[str | None] = mapped_column(Text)
+    href: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str | None] = mapped_column(Text)
+    selector: Mapped[str | None] = mapped_column(Text)
+    link_type: Mapped[str] = mapped_column(String(32), nullable=False, default="navigate")
+    visited: Mapped[bool] = mapped_column(Boolean, default=False)
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class NetworkEventRow(Base):
     __tablename__ = "network_events"
 
@@ -384,3 +409,13 @@ class WorkflowRow(Base):
     trigger_action_ids: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ApplicationCatalogRow(Base):
+    __tablename__ = "application_catalogs"
+
+    application_key: Mapped[str] = mapped_column(String(256), primary_key=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    golden_version: Mapped[str | None] = mapped_column(String(128))
+    golden_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -141,7 +141,16 @@ def _accessibility_tree(page: Page) -> dict:
             walk(child, depth + 1)
 
     walk(snapshot)
-    return {"interactive_count": len(nodes), "nodes": nodes}
+    validation_messages = [
+        node.get("name") or node.get("value")
+        for node in nodes
+        if node.get("role") in {"alert", "status"} and (node.get("name") or node.get("value"))
+    ]
+    return {
+        "interactive_count": len(nodes),
+        "nodes": nodes,
+        "validation_messages": validation_messages[:20],
+    }
 
 
 def _framework_hints(page: Page) -> dict:

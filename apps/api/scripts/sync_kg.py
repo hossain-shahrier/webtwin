@@ -10,6 +10,7 @@ from uuid import UUID
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from api.kg.sync import kg_enabled, sync_investigation_to_kg  # noqa: E402
+from api.services.investigations import get_reference_system_context, list_evidence, list_rules  # noqa: E402
 from api.store.factory import create_store  # noqa: E402
 
 
@@ -27,17 +28,25 @@ def main() -> None:
 
     total = {"nodes": 0, "edges": 0}
     for investigation in investigations:
-        rules = [r for r in store.rules.values() if r.investigation_id == investigation.id]
-        evidence = [e for e in store.evidence.values() if e.investigation_id == investigation.id]
+        reference = get_reference_system_context(investigation.id)
+        rules = list_rules(investigation.id)
+        evidence = list_evidence(investigation.id)
         result = sync_investigation_to_kg(
             investigation_id=investigation.id,
             application_name=investigation.application_name,
+            application_key=reference.application_key,
             target_url=investigation.target_url,
             rules=rules,
             evidence=evidence,
             role_scope=investigation.role_scope,
             application_version=investigation.application_version,
             environment=investigation.environment,
+            screens=reference.screens,
+            entities=reference.entities,
+            flows=reference.flows,
+            discovered_links=reference.discovered_links,
+            navigation=reference.navigation,
+            rules_by_screen=reference.rules_by_screen,
         )
         print(f"{investigation.id}: {result}")
         total["nodes"] += result.get("nodes", 0)

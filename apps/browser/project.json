@@ -38,7 +38,7 @@
       "executor": "nx:run-commands",
       "continuous": true,
       "options": {
-        "command": "WEBTWIN_WORKER=1 WEBTWIN_HEADLESS=false WEBTWIN_API_URL=http://127.0.0.1:8060 uv run python main.py",
+        "command": "WEBTWIN_WORKER=1 WEBTWIN_HEADLESS=false WEBTWIN_AUTH_TIMEOUT=0 WEBTWIN_API_URL=http://127.0.0.1:8060 uv run python main.py",
         "cwd": "apps/browser"
       }
     },

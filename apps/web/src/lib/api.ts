@@ -1,10 +1,14 @@
 import type {
+  ApplicationCatalog,
   BusinessRule,
+  CloneScorecard,
   EvaluationRun,
   Evidence,
   Investigation,
   InvestigationDetail,
   InvestigationTransition,
+  ReferenceSystemContext,
+  RuleProvenance,
   SessionPublic,
   TimelineEvent,
 } from './types';
@@ -36,9 +40,22 @@ export function createInvestigation(payload: {
   goal: string;
   target_url: string;
   feature_scope?: string;
+  exploration_policy?: string;
+  investigation_scope?: string;
+  url_prefix?: string;
+  start_url?: string;
+  application_name?: string;
+  application_key?: string;
+  role_scope?: string;
   application_version?: string;
   environment?: string;
   spa_mode?: boolean;
+  goal_spec?: {
+    type: string;
+    target: string;
+    scope?: string | null;
+    description?: string | null;
+  } | null;
 }): Promise<Investigation> {
   return request('/investigations', {
     method: 'POST',
@@ -62,6 +79,10 @@ export function getRules(id: string): Promise<BusinessRule[]> {
   return request(`/investigations/${id}/rules`);
 }
 
+export function getRuleProvenance(id: string, ruleId: string): Promise<RuleProvenance> {
+  return request(`/investigations/${id}/rules/${ruleId}/provenance`);
+}
+
 export function getEvidence(id: string): Promise<Evidence[]> {
   return request(`/investigations/${id}/evidence`);
 }
@@ -82,6 +103,20 @@ export function resumeAfterAuthentication(id: string): Promise<Investigation> {
   return request(`/investigations/${id}/auth/resume`, { method: 'POST' });
 }
 
+export function getAuthForm(id: string): Promise<{ form: import('./types').AuthFormSchema | null }> {
+  return request(`/investigations/${id}/auth/form`);
+}
+
+export function submitAuthForm(
+  id: string,
+  payload: { values?: Record<string, string>; use_dummy?: boolean },
+): Promise<{ id: string; status: string; use_dummy: boolean }> {
+  return request(`/investigations/${id}/auth/submit-form`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function resumeFailedInvestigation(id: string): Promise<Investigation> {
   return request(`/investigations/${id}/resume`, { method: 'POST' });
 }
@@ -98,4 +133,85 @@ export function askQuestion(
     method: 'POST',
     body: JSON.stringify({ question }),
   });
+}
+
+export function exportCursorContext(id: string): Promise<{
+  markdown: string;
+  verified_rules: unknown[];
+  candidate_rules: unknown[];
+  reference_system?: ReferenceSystemContext;
+  clone_spec_url?: string;
+}> {
+  return request(`/investigations/${id}/export/cursor`);
+}
+
+export function exportCloneSpec(id: string): Promise<Record<string, unknown>> {
+  return request(`/investigations/${id}/export/clone-spec`);
+}
+
+export function exportAiSpec(id: string): Promise<{
+  markdown: string;
+  summary: {
+    screen_count?: number;
+    layout_field_count?: number;
+    interaction_field_count?: number;
+    unique_interaction_field_count?: number;
+    navigation_edge_count?: number;
+    verified_rule_count?: number;
+    candidate_rule_count?: number;
+    link_coverage_pct?: number;
+  };
+  layout?: unknown[];
+  route_groups?: unknown[];
+  routes: unknown[];
+  interactions: unknown[];
+  navigation: unknown[];
+  verified_rules: unknown[];
+  candidate_rules: unknown[];
+  full_clone_spec_url?: string;
+}> {
+  return request(`/investigations/${id}/export/ai-spec`);
+}
+
+export function pinGoldenCatalog(applicationKey: string, version: string): Promise<Record<string, unknown>> {
+  return request(`/applications/${encodeURIComponent(applicationKey)}/golden/${encodeURIComponent(version)}`, {
+    method: 'POST',
+  });
+}
+
+export function getReferenceSystem(id: string): Promise<ReferenceSystemContext> {
+  return request(`/investigations/${id}/reference-system`);
+}
+
+export function getSiteGraph(id: string): Promise<{
+  nodes: Array<{ id: string; name: string; visit_count?: number; primary_entity?: string | null }>;
+  edges: Array<{ from: string; to: string | null; href: string; visited: boolean }>;
+  visited_edges?: Array<{ from_screen_id: string; to_screen_id: string }>;
+  stats?: Record<string, number>;
+}> {
+  return request(`/investigations/${id}/site-graph`);
+}
+
+export function getCloneScorecard(id: string): Promise<CloneScorecard> {
+  return request(`/investigations/${id}/clone-scorecard`);
+}
+
+export function mergeInvestigationCatalog(id: string): Promise<{
+  merged: boolean;
+  catalog?: ApplicationCatalog;
+}> {
+  return request(`/investigations/${id}/merge-catalog`, { method: 'POST' });
+}
+
+export function getApplication(applicationKey: string): Promise<{
+  catalog: ApplicationCatalog;
+  investigations: Array<{
+    id: string;
+    goal: string;
+    status: string;
+    role_scope?: string | null;
+    target_url: string;
+  }>;
+}> {
+  return request(`/applications/${encodeURIComponent(applicationKey)}`);
 }

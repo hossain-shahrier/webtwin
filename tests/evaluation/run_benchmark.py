@@ -154,6 +154,10 @@ def run_level(level: str, api_url: str, headless: bool) -> None:
     contradicted = sum(1 for rule in verified_rules if rule.status == RuleStatus.CONTRADICTED)
 
     metrics = compute_metrics(level, expected, discovered, verified, contradicted, actions)
+    export_sufficiency = round(
+        (len(verified) / len(expected)) if expected else 0.0,
+        3,
+    )
     print(f"\n=== {level} ===")
     print(
         f"discovery: precision={metrics.discovery.precision} "
@@ -165,6 +169,13 @@ def run_level(level: str, api_url: str, headless: bool) -> None:
         f"verified={metrics.verification.verified_rules}"
     )
     print(f"actions={metrics.actions_taken} rules/action={metrics.rules_per_action}")
+    print(f"export_sufficiency={export_sufficiency}")
+    return {
+        "level": level,
+        "f1": metrics.discovery.f1_score,
+        "verified": len(verified),
+        "export_sufficiency": export_sufficiency,
+    }
 
 
 def main() -> None:
@@ -174,9 +185,18 @@ def main() -> None:
     headless = os.environ.get("WEBTWIN_HEADLESS", "true").lower() == "true"
     default_levels = ",".join(LEVELS.keys())
     levels = os.environ.get("WEBTWIN_BENCHMARK_LEVELS", default_levels).split(",")
+    summary: list[dict] = []
 
     for level in levels:
-        run_level(level.strip(), api_url, headless)
+        result = run_level(level.strip(), api_url, headless)
+        if result:
+            summary.append(result)
+
+    if summary:
+        avg_f1 = sum(item["f1"] for item in summary) / len(summary)
+        avg_export = sum(item["export_sufficiency"] for item in summary) / len(summary)
+        print(f"\n=== benchmark summary ===")
+        print(f"levels={len(summary)} avg_f1={avg_f1:.3f} avg_export_sufficiency={avg_export:.3f}")
 
 
 if __name__ == "__main__":

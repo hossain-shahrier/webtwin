@@ -25,11 +25,16 @@ def save_checkpoint(
     if investigation.status not in CHECKPOINT_STATUSES:
         return
 
+    prior_exploration = None
+    if investigation.checkpoint is not None:
+        prior_exploration = investigation.checkpoint.exploration
+
     investigation.checkpoint = InvestigationCheckpoint(
         status=investigation.status,
         target_url=investigation.target_url,
         last_event=event,
         observation_count=observation_count,
+        exploration=prior_exploration,
     )
 
 

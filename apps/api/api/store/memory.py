@@ -12,6 +12,8 @@ from webtwin_core.models import (
     StateDiff,
     TimelineEvent,
 )
+from webtwin_core.reference_system.catalog import ApplicationCatalog
+from api.store.catalog_store import CatalogStore
 from webtwin_core.verification.engine import VerificationRun
 
 
@@ -30,6 +32,13 @@ class MemoryStore:
         self.evaluation_runs: dict[UUID, EvaluationRun] = {}
         self.network_events: dict[UUID, dict] = {}
         self.workflows: dict[UUID, dict] = {}
+        self.application_catalogs: dict[str, ApplicationCatalog] = {}
+        self.discovered_links: dict[UUID, object] = {}
+        self.investigation_claims: dict[UUID, str] = {}
+        self.auth_form_submissions: dict[UUID, object] = {}
+        self.catalog_store = CatalogStore(memory=self.application_catalogs)
+        for catalog in self.catalog_store.list_all():
+            self.application_catalogs[catalog.application_key] = catalog
 
     def clear(self) -> None:
         self.investigations.clear()
@@ -45,3 +54,7 @@ class MemoryStore:
         self.evaluation_runs.clear()
         self.network_events.clear()
         self.workflows.clear()
+        self.application_catalogs.clear()
+        self.discovered_links.clear()
+        self.investigation_claims.clear()
+        self.auth_form_submissions.clear()

@@ -18,10 +18,12 @@ from webtwin_core.models import (
 )
 from webtwin_core.models.investigation import InvestigationTransition
 from webtwin_core.models.rule_status import RuleStatus
-from webtwin_core.verification.engine import VerificationRun
+from api.store.catalog_store import CatalogStore
+from webtwin_core.reference_system.catalog import ApplicationCatalog
 
 from api.db import mappers
 from api.db.schema import (
+    ApplicationCatalogRow,
     ApplicationStateRow,
     EvaluationRunRow,
     EvidenceRow,
@@ -30,6 +32,7 @@ from api.db.schema import (
     InvestigationTransitionRow,
     NetworkEventRow,
     ObservationRow,
+    DiscoveredLinkRow,
     RuleEvidenceRow,
     RuleExperimentRow,
     RuleRow,
@@ -58,11 +61,24 @@ class PostgresStore:
         self.evaluation_runs = _EntityMap(self, "evaluation_run")
         self.workflows = _EntityMap(self, "workflow")
         self.network_events = _EntityMap(self, "network_event")
+        self.discovered_links = _EntityMap(self, "discovered_link")
+        self.investigation_claims: dict[UUID, str] = {}
+        self.auth_form_submissions: dict[UUID, object] = {}
+        # Process-local catalog cache + durable catalog store
+        self.application_catalogs: dict[str, ApplicationCatalog] = {}
+        self.catalog_store = CatalogStore(
+            session_factory=session_factory,
+            memory=self.application_catalogs,
+        )
+        for catalog in self.catalog_store.list_all():
+            self.application_catalogs[catalog.application_key] = catalog
 
     def clear(self) -> None:
+        self.application_catalogs.clear()
         with self._session_factory() as session:
             for table in (
                 NetworkEventRow,
+                DiscoveredLinkRow,
                 WorkflowRow,
                 EvaluationRunRow,
                 RuleExperimentRow,
@@ -76,6 +92,7 @@ class PostgresStore:
                 ObservationRow,
                 InvestigationTransitionRow,
                 SessionRow,
+                ApplicationCatalogRow,
                 InvestigationRow,
             ):
                 session.execute(delete(table))
@@ -161,6 +178,9 @@ class PostgresStore:
         if kind == "network_event":
             row = session.get(NetworkEventRow, entity_id)
             return mappers.network_event_from_row(row) if row else None
+        if kind == "discovered_link":
+            row = session.get(DiscoveredLinkRow, entity_id)
+            return mappers.discovered_link_from_row(row) if row else None
         raise KeyError(kind)
 
     def _load_all(self, session: Session, kind: str) -> list:
@@ -219,6 +239,11 @@ class PostgresStore:
             return [mappers.workflow_from_row(row) for row in session.scalars(select(WorkflowRow))]
         if kind == "network_event":
             return [mappers.network_event_from_row(row) for row in session.scalars(select(NetworkEventRow))]
+        if kind == "discovered_link":
+            return [
+                mappers.discovered_link_from_row(row)
+                for row in session.scalars(select(DiscoveredLinkRow))
+            ]
         raise KeyError(kind)
 
     def _upsert(self, session: Session, kind: str, entity_id: UUID, value) -> None:
@@ -306,6 +331,9 @@ class PostgresStore:
             return
         if kind == "network_event":
             session.merge(mappers.network_event_to_row(value))
+            return
+        if kind == "discovered_link":
+            session.merge(mappers.discovered_link_to_row(value))
             return
         raise KeyError(kind)
 

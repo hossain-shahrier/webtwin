@@ -39,14 +39,15 @@ def _run_one(
         )
     else:
         policy = os.environ.get("WEBTWIN_POLICY", "information_gain")
-        # Prefer policy encoded in feature_scope from dashboard create
+        from webtwin_core.exploration import budget_for_policy
+
         investigation_id, _candidates, verified_rules, _actions, metrics = (
             run_exploration_and_verification(
                 target,
                 policy=policy,
                 api_base_url=api_url,
                 headless=headless,
-                budget=ExplorationBudget(max_actions=int(os.environ.get("WEBTWIN_MAX_ACTIONS", "12"))),
+                budget=budget_for_policy(policy),
                 investigation_id=investigation_id,
             )
         )
@@ -73,11 +74,19 @@ def run_worker(api_url: str, headless: bool) -> None:
         # Prefer brand-new jobs over orphaned auth pauses.
         pending.sort(key=lambda job: 0 if job.status == InvestigationStatus.CREATED else 1)
         job = pending[0]
-        policy = job.feature_scope or os.environ.get("WEBTWIN_POLICY", "information_gain")
+        policy = (
+            job.exploration_policy
+            or os.environ.get("WEBTWIN_POLICY", "information_gain")
+        )
         os.environ["WEBTWIN_POLICY"] = policy
         if job.spa_mode or (job.environment or "").lower().find("spa") >= 0:
             os.environ["WEBTWIN_SPA_MODE"] = "1"
-        print(f"Claiming {job.id} → {job.target_url} (policy={policy} spa={job.spa_mode})")
+        if job.url_prefix:
+            os.environ["WEBTWIN_URL_PREFIX"] = job.url_prefix
+        print(
+            f"Claiming {job.id} → {job.target_url} "
+            f"(policy={policy} scope={job.investigation_scope} spa={job.spa_mode})"
+        )
         try:
             _run_one(
                 target=job.target_url,

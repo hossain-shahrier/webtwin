@@ -9,6 +9,7 @@ from playwright.sync_api import Error as PlaywrightError
 from webtwin_core.models import AuthState, InvestigationStatus, TransitionEvent
 
 from browser.client.api import ApiClient
+from browser.session.auth_form_fill import apply_auth_form_fill
 from browser.session.manager import SessionManager
 from browser.session.store import SessionStore
 
@@ -93,6 +94,14 @@ def _try_auto_resume(client: ApiClient, investigation_id: UUID) -> bool:
     return False
 
 
+def _auth_wait_timeout_seconds() -> float | None:
+    """Return wall-clock auth wait budget, or None to wait indefinitely."""
+    raw = os.environ.get("WEBTWIN_AUTH_TIMEOUT", "0").strip()
+    if not raw or raw.lower() in {"0", "none", "off", "false", "unlimited"}:
+        return None
+    return float(raw)
+
+
 def wait_for_dashboard_auth_resume(
     client: ApiClient,
     investigation_id: UUID,
@@ -101,18 +110,24 @@ def wait_for_dashboard_auth_resume(
     session_store: SessionStore,
     session_manager: SessionManager,
     poll_interval: float = 0.5,
-    timeout: float = float(os.environ.get("WEBTWIN_AUTH_TIMEOUT", "600")),
+    timeout: float | None = None,
 ) -> None:
     """Wait for human auth via dashboard; browser verifies login before API resumes."""
     investigation = client.get_investigation(investigation_id)
     target_url = investigation.target_url
-    deadline = time.time() + timeout
+    wait_budget = _auth_wait_timeout_seconds() if timeout is None else timeout
+    deadline = float("inf") if not wait_budget or wait_budget <= 0 else time.time() + wait_budget
     last_log = 0.0
     did_human_ready_nav = False
     storage_saved = False
 
     print("[WebTwin] Waiting for login in this Chromium window (not a separate Chrome tab).")
-    print(f"[WebTwin] After login, click “I've completed authentication” in the dashboard.")
+    print("[WebTwin] Prefer the dashboard form when fields appear, or sign in manually here.")
+    print("[WebTwin] After login, click “I've completed authentication” in the dashboard if needed.")
+    if deadline == float("inf"):
+        print("[WebTwin] Auth wait: no timeout — take as long as you need.")
+
+    fill_attempted = False
 
     while time.time() < deadline:
         investigation = client.get_investigation(investigation_id)
@@ -128,6 +143,24 @@ def wait_for_dashboard_auth_resume(
                 raise TimeoutError("Browser closed while waiting for authentication — keep Chrome for Testing open")
 
             _maybe_auto_login(page, client.base_url, investigation_id)
+
+            if not fill_attempted:
+                pending = client.get_pending_auth_fill(investigation_id)
+                if pending and pending.get("values"):
+                    form = client.get_auth_form(investigation_id) or {}
+                    print("[WebTwin] Applying dashboard auth form values into the browser…")
+                    ok, details = apply_auth_form_fill(page, form, pending.get("values") or {})
+                    fill_attempted = True
+                    try:
+                        client.mark_auth_fill_applied(
+                            investigation_id,
+                            status="applied" if ok else "failed",
+                            error=None if ok else details,
+                        )
+                    except Exception as error:
+                        print(f"[WebTwin] Could not mark fill applied: {error}")
+                    print(f"[WebTwin] Dashboard form fill: {details}")
+                    page.wait_for_timeout(1200)
 
             # When the human confirms, force-navigate to the app URL so SPID/popup
             # redirects that left the main page on login still get a chance to apply cookies.
@@ -171,6 +204,6 @@ def wait_for_dashboard_auth_resume(
     if investigation.status == InvestigationStatus.AUTHENTICATED:
         session_manager.mark_authenticated()
         return
-    if investigation.status == InvestigationStatus.AUTH_REQUIRED:
+    if deadline != float("inf") and investigation.status == InvestigationStatus.AUTH_REQUIRED:
         client.transition(investigation_id, TransitionEvent.AUTH_TIMEOUT, reason="timeout")
-    raise TimeoutError("Authentication timed out waiting for dashboard resume")
+        raise TimeoutError("Authentication timed out waiting for dashboard resume")

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from webtwin_core.evaluation.runs import EvaluationRun
 from webtwin_core.models import (
     ApplicationState,
+    AuthFormSchema,
     BusinessRule,
     Evidence,
     Investigation,
@@ -56,6 +57,47 @@ def mark_authentication_ready(investigation_id: UUID) -> svc.SessionPublic:
 @router.post("/{investigation_id}/auth/resume", response_model=Investigation)
 def resume_after_authentication(investigation_id: UUID) -> Investigation:
     return svc.resume_after_authentication(investigation_id)
+
+
+@router.get("/{investigation_id}/auth/form")
+def get_auth_form(investigation_id: UUID):
+    schema = svc.get_auth_form(investigation_id)
+    if schema is None:
+        return {"form": None}
+    return {"form": schema.model_dump(mode="json")}
+
+
+@router.put("/{investigation_id}/auth/form")
+def upsert_auth_form(investigation_id: UUID, schema: AuthFormSchema):
+    return svc.upsert_auth_form_schema(investigation_id, schema).model_dump(mode="json")
+
+
+@router.post("/{investigation_id}/auth/submit-form")
+def submit_auth_form(investigation_id: UUID, request: svc.AuthFormSubmitRequest):
+    return svc.submit_auth_form(investigation_id, request).model_dump(mode="json")
+
+
+@router.get("/{investigation_id}/auth/pending-fill")
+def get_pending_auth_fill(investigation_id: UUID):
+    submission = svc.get_pending_auth_fill(investigation_id)
+    if submission is None:
+        return {"submission": None}
+    return {"submission": submission.model_dump(mode="json")}
+
+
+@router.post("/{investigation_id}/auth/fill-applied")
+def mark_auth_fill_applied(investigation_id: UUID, request: svc.AuthFillAppliedRequest):
+    return svc.mark_auth_fill_applied(investigation_id, request).model_dump(mode="json")
+
+
+@router.put("/{investigation_id}/exploration-progress")
+def save_exploration_progress(investigation_id: UUID, request: svc.ExplorationProgressRequest):
+    return svc.save_exploration_progress(investigation_id, request)
+
+
+@router.get("/{investigation_id}/exploration-progress")
+def get_exploration_progress(investigation_id: UUID):
+    return {"exploration": svc.get_exploration_progress(investigation_id)}
 
 
 @router.post("/{investigation_id}/session", response_model=svc.SessionPublic)
@@ -184,6 +226,63 @@ def get_metrics(investigation_id: UUID) -> list[EvaluationRun]:
 @router.post("/{investigation_id}/questions", response_model=QuestionAnswer)
 def ask_question(investigation_id: UUID, request: QuestionRequest) -> QuestionAnswer:
     return svc.ask_question(investigation_id, request.question)
+
+
+@router.get("/{investigation_id}/export/clone-spec")
+def export_clone_spec(investigation_id: UUID) -> dict:
+    return svc.export_clone_spec(investigation_id)
+
+
+@router.get("/{investigation_id}/export/cursor")
+def export_cursor_context(investigation_id: UUID) -> dict:
+    return svc.export_cursor_context(investigation_id)
+
+
+@router.get("/{investigation_id}/export/ai-spec")
+def export_ai_spec(investigation_id: UUID) -> dict:
+    return svc.export_ai_spec(investigation_id)
+
+
+@router.get("/{investigation_id}/clone-scorecard")
+def get_clone_scorecard(investigation_id: UUID) -> dict:
+    return svc.get_clone_scorecard(investigation_id)
+
+
+@router.get("/{investigation_id}/site-graph")
+def get_site_graph(investigation_id: UUID) -> dict:
+    graph = svc.get_site_graph(investigation_id)
+    return {
+        "nodes": [node.model_dump(mode="json") for node in graph.nodes],
+        "edges": [
+            {
+                "from": link.from_screen_id,
+                "to": link.to_screen_id,
+                "href": link.href,
+                "visited": link.visited,
+                "link_type": link.link_type.value,
+                "selector": link.selector,
+            }
+            for link in graph.discovered_links
+        ],
+        "visited_edges": [edge.model_dump(mode="json") for edge in graph.visited_edges],
+        "stats": graph.stats.model_dump(mode="json"),
+    }
+
+
+@router.get("/{investigation_id}/reference-system")
+def get_reference_system(investigation_id: UUID) -> dict:
+    context = svc.get_reference_system_context(investigation_id)
+    payload = context.model_dump(mode="json")
+    payload["clone_scorecard"] = svc.get_clone_scorecard(investigation_id)
+    return payload
+
+
+@router.post("/{investigation_id}/merge-catalog")
+def merge_catalog(investigation_id: UUID) -> dict:
+    catalog = svc.merge_reference_into_catalog(investigation_id)
+    if catalog is None:
+        return {"merged": False}
+    return {"merged": True, "catalog": catalog.model_dump(mode="json")}
 
 
 @router.get("/{investigation_id}/workflows")

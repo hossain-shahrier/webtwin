@@ -4,12 +4,12 @@
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `DATABASE_URL` | `postgresql+psycopg://webtwin:webtwin@127.0.0.1:5432/webtwin` | Postgres |
+| `DATABASE_URL` | `postgresql+psycopg://webtwin:webtwin@127.0.0.1:5434/webtwin` | Postgres (host **5434** — avoids conflict with other local DBs on 5432/5433) |
 | `WEBTWIN_STORE` | `memory` (tests) / `postgres` (dev) | Store backend |
 | `WEBTWIN_API_URL` | `http://127.0.0.1:8060` | Browser / eval → API |
 | `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8060` | Dashboard → API |
 | `PORT` | `8060` | API listen port |
-| `WEBTWIN_KG_ENABLED` | `false` | Neo4j sync |
+| `WEBTWIN_KG_ENABLED` | `true` (docker stack) / `false` (bare api:dev) | Neo4j sync |
 | `NEO4J_URI` | `bolt://127.0.0.1:7687` | Knowledge graph |
 | `WEBTWIN_LLM_PROVIDER` | unset / `heuristic` | AI planner (`openai`/`anthropic`/`heuristic`) |
 | `WEBTWIN_LLM_API_KEY` | unset | Optional remote LLM key |
@@ -23,12 +23,22 @@
 | `WEBTWIN_NAV_TIMEOUT_MS` | `45000` | Navigation timeout (`domcontentloaded`) |
 | `WEBTWIN_STORAGE_STATE` | unset | Path to Playwright `storage_state` JSON (HITL login reuse) |
 
+## Docker stack (postgres + neo4j + api + web)
+
+```bash
+docker compose -f infrastructure/docker/docker-compose.yml --profile stack up -d
+# Neo4j Browser: http://127.0.0.1:7474 (neo4j / webtwin-neo4j)
+# API: http://127.0.0.1:8060 · Web: http://127.0.0.1:3000
+```
+
 ## Local (recommended)
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.yml up -d postgres
+docker compose -f infrastructure/docker/docker-compose.yml up -d postgres neo4j
+# Postgres listens on host port 5434 (not 5432) to avoid clashing with other local databases.
 pnpm nx run api:migrate
-pnpm nx run api:dev:postgres
+uv sync --directory apps/api --group kg
+WEBTWIN_KG_ENABLED=1 pnpm nx run api:dev:postgres
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8060 pnpm nx serve web
 WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run evaluation:benchmark
 WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run evaluation:benchmark-spa
@@ -50,10 +60,12 @@ WEBTWIN_STORAGE_STATE=~/.webtwin/portal.json WEBTWIN_TARGET_URL='…' \\
 WEBTWIN_API_URL=http://127.0.0.1:8060 pnpm nx run browser:worker
 ```
 
-## Optional Knowledge Graph
+## Knowledge Graph
+
+Neo4j is included in the default docker `stack` profile. For bare-metal API:
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.yml --profile kg up -d neo4j
+docker compose -f infrastructure/docker/docker-compose.yml up -d neo4j
 uv sync --directory apps/api --group kg
 WEBTWIN_KG_ENABLED=1 pnpm nx run api:sync-kg
 ```

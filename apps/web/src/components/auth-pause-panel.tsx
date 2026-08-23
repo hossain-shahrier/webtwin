@@ -1,13 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   beginAuthentication,
+  getAuthForm,
   markAuthenticationReady,
   resumeAfterAuthentication,
+  submitAuthForm,
 } from '../lib/api';
-import type { Investigation, SessionPublic } from '../lib/types';
-import styles from './auth-pause-panel.module.css';
+import type {
+  AuthFormField,
+  AuthFormSchema,
+  Investigation,
+  SessionPublic,
+} from '../lib/types';
+import styles from '../app/ui.module.css';
 
 interface AuthPausePanelProps {
   investigation: Investigation;
@@ -15,33 +22,64 @@ interface AuthPausePanelProps {
   onUpdate: () => void;
 }
 
-function formatReason(reason: string | undefined): string {
-  if (!reason) return 'Authentication required';
-  return reason.replace(/_/g, ' ');
-}
-
-function targetLabel(investigation: Investigation): string {
-  if (investigation.application_name) return investigation.application_name;
-  try {
-    const url = new URL(investigation.target_url);
-    return url.pathname || investigation.target_url;
-  } catch {
-    return investigation.target_url;
-  }
+function fieldInputType(field: AuthFormField): string {
+  if (field.is_secret || field.input_type === 'password') return 'password';
+  if (field.input_type === 'email') return 'email';
+  if (field.input_type === 'tel') return 'tel';
+  if (field.input_type === 'number') return 'number';
+  return 'text';
 }
 
 export function AuthPausePanel({ investigation, session, onUpdate }: AuthPausePanelProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [form, setForm] = useState<AuthFormSchema | null>(
+    investigation.auth_pause?.form ?? null,
+  );
+  const [values, setValues] = useState<Record<string, string>>({});
 
   const sessionStatus = session?.session_status ?? 'auth_required';
-  const isAuthenticating = sessionStatus === 'authenticating' || sessionStatus === 'auth_required';
+  const started = sessionStatus === 'authenticating' || sessionStatus === 'authenticated';
   const humanReady = session?.human_ready ?? false;
-  const authVerified = session?.has_persisted_storage && session.auth_state === 'authenticated';
+  const authVerified = Boolean(session?.has_persisted_storage && session.auth_state === 'authenticated');
+  const hasDynamicForm = Boolean(form?.fields?.length);
+
+  useEffect(() => {
+    setForm(investigation.auth_pause?.form ?? null);
+  }, [investigation.auth_pause?.form]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadForm() {
+      try {
+        const payload = await getAuthForm(investigation.id);
+        if (!cancelled && payload.form?.fields?.length) {
+          setForm(payload.form);
+        }
+      } catch {
+        // Worker may not have published the schema yet.
+      }
+    }
+    loadForm();
+    const timer = setInterval(loadForm, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [investigation.id]);
+
+  const title = useMemo(() => {
+    if (form?.page_kind === 'register') return 'Registration form detected';
+    if (form?.page_kind === 'mfa') return 'Verification form detected';
+    if (hasDynamicForm) return 'Login form detected';
+    return 'Login required';
+  }, [form?.page_kind, hasDynamicForm]);
 
   async function run(action: string, fn: () => Promise<unknown>) {
     setBusy(action);
     setError(null);
+    setNote(null);
     try {
       await fn();
       onUpdate();
@@ -52,93 +90,172 @@ export function AuthPausePanel({ investigation, session, onUpdate }: AuthPausePa
     }
   }
 
-  function startAuthFlow() {
-    void run('begin', () => beginAuthentication(investigation.id));
+  async function submitForm(useDummy: boolean) {
+    setBusy(useDummy ? 'dummy' : 'submit');
+    setError(null);
+    setNote(null);
+    try {
+      if (!started) {
+        await beginAuthentication(investigation.id);
+      }
+      await submitAuthForm(investigation.id, {
+        values: useDummy ? {} : values,
+        use_dummy: useDummy,
+      });
+      setNote(
+        useDummy
+          ? 'Dummy values sent to the worker — watch Chrome for Testing fill the form.'
+          : 'Credentials sent to the worker — watch Chrome for Testing fill the form.',
+      );
+      onUpdate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Submit failed');
+    } finally {
+      setBusy(null);
+    }
   }
 
-  return (
-    <section className={styles.panel}>
-      <header className={styles.header}>
-        <span className={styles.badge}>Investigation Paused</span>
-        <h2>Authentication is required</h2>
-        <p className={styles.subtitle}>
-          Log in only in the <strong>Chrome for Testing</strong> window opened by{' '}
-          <code>browser:worker-headed</code>. A normal Chrome/Safari tab does not share cookies with
-          the worker — do not use “open in new tab” for login.
-        </p>
-      </header>
+  const step = !started ? 1 : !humanReady ? 2 : authVerified ? 3 : 2;
 
-      <dl className={styles.meta}>
-        <div>
-          <dt>Investigation</dt>
-          <dd>{investigation.id.slice(0, 8)}…</dd>
+  return (
+    <section className={styles.panel} style={{ borderColor: '#e0b35c' }}>
+      <h2 className={styles.panelTitle}>{title}</h2>
+      <p className={styles.hint} style={{ marginBottom: '1rem' }}>
+        {hasDynamicForm
+          ? 'Fill the mirrored form below (dummy or real). The headed worker injects values into the live site. SSO/CAPTCHA may still need the Chrome window.'
+          : 'Waiting for the worker to detect login/register fields, or sign in directly in Chrome for Testing.'}
+      </p>
+
+      {hasDynamicForm && (
+        <div style={{ marginBottom: '1rem' }}>
+          {form?.notes?.map((item) => (
+            <p key={item} className={styles.hint} style={{ marginBottom: '0.35rem' }}>
+              {item}
+            </p>
+          ))}
+          <div
+            style={{
+              display: 'grid',
+              gap: '0.75rem',
+              marginTop: '0.75rem',
+              maxWidth: '28rem',
+            }}
+          >
+            {form?.fields.map((field) => (
+              <label key={field.key} style={{ display: 'grid', gap: '0.25rem' }}>
+                <span className={styles.fieldLabel}>
+                  {field.label}
+                  {field.required ? ' *' : ''}
+                </span>
+                {field.input_type === 'select' && field.options?.length ? (
+                  <select
+                    className={styles.input}
+                    value={values[field.key] ?? ''}
+                    onChange={(event) =>
+                      setValues((prev) => ({ ...prev, [field.key]: event.target.value }))
+                    }
+                  >
+                    <option value="">Select…</option>
+                    {field.options.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className={styles.input}
+                    type={fieldInputType(field)}
+                    autoComplete={field.is_secret ? 'current-password' : 'off'}
+                    placeholder={field.placeholder ?? undefined}
+                    value={values[field.key] ?? ''}
+                    onChange={(event) =>
+                      setValues((prev) => ({ ...prev, [field.key]: event.target.value }))
+                    }
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+          <div className={styles.row} style={{ marginTop: '0.85rem' }}>
+            <button
+              type="button"
+              className={styles.btn}
+              disabled={!!busy}
+              onClick={() => submitForm(false)}
+            >
+              {busy === 'submit' ? 'Sending…' : form?.submit_label || 'Send to browser'}
+            </button>
+            {form?.supports_dummy && (
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                disabled={!!busy}
+                onClick={() => submitForm(true)}
+              >
+                {busy === 'dummy' ? 'Sending…' : 'Use dummy values'}
+              </button>
+            )}
+          </div>
         </div>
-        <div>
-          <dt>Status</dt>
-          <dd>{formatReason(investigation.auth_pause?.reason)}</dd>
-        </div>
-        <div>
-          <dt>Target</dt>
-          <dd>{targetLabel(investigation)}</dd>
-        </div>
-        <div>
-          <dt>Browser session</dt>
-          <dd>
-            {authVerified
-              ? 'Login verified by worker'
-              : humanReady
-                ? 'Waiting for worker to verify Chromium session…'
-                : isAuthenticating
-                  ? 'Log in in Chrome for Testing, then confirm below'
-                  : 'Waiting for human'}
-          </dd>
-        </div>
-      </dl>
+      )}
+
+      <ol className={styles.timeline} style={{ marginBottom: '1rem' }}>
+        <li>
+          <strong>1. Ready</strong> — tell WebTwin you’re about to log in
+          {step > 1 ? ' ✓' : ''}
+        </li>
+        <li>
+          <strong>2. Sign in</strong> — dashboard form and/or Chrome for Testing
+          {humanReady ? ' ✓' : ''}
+        </li>
+        <li>
+          <strong>3. Continue</strong> — worker verifies cookies
+          {authVerified ? ' ✓' : ''}
+        </li>
+      </ol>
 
       {error && <p className={styles.error}>{error}</p>}
+      {note && <p className={styles.hint}>{note}</p>}
 
-      <div className={styles.actions}>
-        {sessionStatus !== 'authenticating' && sessionStatus !== 'authenticated' ? (
-          <button type="button" className={styles.primary} disabled={!!busy} onClick={startAuthFlow}>
-            I&apos;m ready to log in
+      <div className={styles.row}>
+        {!started ? (
+          <button
+            type="button"
+            className={styles.btn}
+            disabled={!!busy}
+            onClick={() => run('begin', () => beginAuthentication(investigation.id))}
+          >
+            I’m ready to log in
           </button>
         ) : (
           <>
-            <p className={styles.progress}>
-              {authVerified
-                ? '● Worker verified login and saved the session'
-                : humanReady
-                  ? 'Worker is checking the headed Chromium window and will auto-resume when the login wall is gone. Keep that window open.'
-                  : 'Complete login in Chrome for Testing (SPID/password), leave the window open, then confirm below.'}
-            </p>
             {!humanReady && (
               <button
                 type="button"
-                className={styles.secondary}
+                className={styles.btnSecondary}
                 disabled={!!busy}
                 onClick={() => run('ready', () => markAuthenticationReady(investigation.id))}
               >
-                I&apos;ve completed authentication
+                I’ve finished logging in
               </button>
             )}
             <button
               type="button"
-              className={styles.primary}
+              className={styles.btn}
               disabled={!!busy || !humanReady || !authVerified}
-              title={
-                !humanReady
-                  ? 'Confirm authentication completion first'
-                  : !authVerified
-                    ? 'Worker has not verified login / saved storage yet'
-                    : undefined
-              }
               onClick={() => run('resume', () => resumeAfterAuthentication(investigation.id))}
             >
-              Resume Investigation
+              {authVerified ? 'Continue investigation' : 'Waiting for verification…'}
             </button>
           </>
         )}
       </div>
+      {humanReady && !authVerified && (
+        <p className={styles.hint} style={{ marginTop: '0.75rem' }}>
+          Keep Chrome for Testing open. The worker will detect when the login wall is gone.
+        </p>
+      )}
     </section>
   );
 }
