@@ -105,6 +105,13 @@ def snapshot_progress(
     ).capped()
 
 
+def reset_budget_for_resume(budget: "ExplorationBudget") -> None:
+    """Give a resumed crawl a fresh action/page allowance."""
+    budget.actions_used = 0
+    budget.pages_seen = 0
+    budget.experiments_used = 0
+
+
 def apply_progress(
     state: "ExplorationState",
     budget: "ExplorationBudget",

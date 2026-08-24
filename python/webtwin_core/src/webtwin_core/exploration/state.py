@@ -209,13 +209,24 @@ class ExplorationState(BaseModel):
         return len(self.states_seen)
 
     def _screen_visited(self, screen_id: str) -> bool:
-        from webtwin_core.reference_system.site_graph import normalize_screen_id
+        from webtwin_core.reference_system.site_graph import (
+            normalize_screen_id,
+            route_pattern_key,
+        )
 
         normalized = normalize_screen_id(screen_id)
         for url in self.pages_seen_urls:
             if normalize_screen_id(route_key(url)) == normalized:
                 return True
-        return any(normalize_screen_id(route) == normalized for route in self.routes_seen)
+        if any(normalize_screen_id(route) == normalized for route in self.routes_seen):
+            return True
+        pattern = route_pattern_key(normalized)
+        if pattern is None:
+            return False
+        for url in self.pages_seen_urls:
+            if route_pattern_key(route_key(url)) == pattern:
+                return True
+        return any(route_pattern_key(route) == pattern for route in self.routes_seen)
 
     def _matches_url_prefix(self, screen_id: str) -> bool:
         if not self.url_prefix:

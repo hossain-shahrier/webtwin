@@ -527,6 +527,9 @@ def resume_failed(investigation_id: UUID) -> Investigation:
         raise HTTPException(status_code=409, detail="Only failed investigations can use /resume")
     if investigation.checkpoint is None:
         raise HTTPException(status_code=409, detail="No checkpoint available to resume")
+    claims = getattr(store, "investigation_claims", None)
+    if claims is not None:
+        claims.pop(investigation_id, None)
     return transition_investigation(investigation_id, TransitionRequest(event=TransitionEvent.RESUME))
 
 

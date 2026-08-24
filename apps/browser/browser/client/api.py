@@ -199,6 +199,14 @@ class ApiClient:
         response.raise_for_status()
         return response.json().get("exploration")
 
+    def get_timeline(self, investigation_id: UUID) -> list[TimelineEvent]:
+        response = httpx.get(
+            f"{self.base_url}/investigations/{investigation_id}/timeline",
+            timeout=15,
+        )
+        response.raise_for_status()
+        return [TimelineEvent.model_validate(item) for item in response.json()]
+
     def list_discovered_links(self, investigation_id: UUID) -> list[dict]:
         response = httpx.get(
             f"{self.base_url}/investigations/{investigation_id}/site-graph",

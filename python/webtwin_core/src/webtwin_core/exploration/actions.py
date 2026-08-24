@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from webtwin_core.models.investigation import InvestigationGoal
 from webtwin_core.models.observation import ElementSnapshot, Observation
 from webtwin_core.reference_system.entities import match_entity_name
+from webtwin_core.reference_system.site_graph import href_from_element, navigate_priority as _navigate_priority
 
 
 class ActionType(StrEnum):
@@ -156,6 +157,29 @@ def build_action_inventory(
         if not element.visible or not element.enabled:
             continue
         target = element.stable_key or _target_name(element)
+        if element.tag != "a":
+            nav_href = href_from_element(element)
+            if nav_href and not _should_skip_href(nav_href) and _same_origin(observation.url, nav_href):
+                absolute = nav_href if nav_href.startswith("#") else urljoin(observation.url, nav_href)
+                soft = spa_mode and (
+                    nav_href.startswith("#") or nav_href.startswith("/") or bool(element.testid)
+                )
+                action_type = ActionType.ROUTE if soft else ActionType.NAVIGATE
+                actions.append(
+                    ExploratoryAction(
+                        type=action_type,
+                        target=target or nav_href,
+                        selector=element.selector,
+                        values=[absolute],
+                        label=element.text or element.label,
+                        metadata={
+                            "href": nav_href,
+                            "nav": "soft" if soft else "hard",
+                            "priority": str(_navigate_priority(observation.url, absolute)),
+                        },
+                    )
+                )
+                continue
         if element.tag == "a" and element.value:
             href = element.value
             if href.startswith("javascript:") or _should_skip_href(href):

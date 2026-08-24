@@ -27,6 +27,7 @@ from webtwin_core.reference_system.entities import (
     DomainEntity,
     EntityFieldRef,
     attach_rules_to_entities,
+    match_entity_from_route,
     match_entity_name,
     merge_entity_maps,
 )
@@ -178,7 +179,14 @@ def _fields_from_observation(observation: Observation) -> list[ScreenField]:
         if not name:
             continue
         form_name = form_name_by_field.get(name)
-        entity = match_entity_name(name, element.label, form_name, observation.title)
+        route_path = observation.route.path if observation.route else None
+        entity = match_entity_name(
+            name,
+            element.label,
+            form_name,
+            observation.title,
+            route_path=route_path,
+        )
         incoming = ScreenField(
             name=name,
             label=element.label,
@@ -196,14 +204,17 @@ def _fields_from_observation(observation: Observation) -> list[ScreenField]:
 
 
 def _enrich_screen_entities(screen: Screen) -> None:
+    route_entity = match_entity_from_route(screen.path)
     counts: dict[str, int] = {}
     for field in screen.fields:
-        entity = field.entity or match_entity_name(field.name, field.label)
+        if route_entity:
+            field.entity = route_entity
+        elif not field.entity:
+            field.entity = match_entity_name(field.name, field.label, route_path=screen.path)
+        entity = field.entity
         if entity:
-            field.entity = entity
             counts[entity] = counts.get(entity, 0) + 1
-    # path / title hints
-    path_entity = match_entity_name(screen.path, screen.name, screen.url)
+    path_entity = route_entity or match_entity_name(screen.path, screen.name, screen.url, route_path=screen.path)
     if path_entity:
         counts[path_entity] = counts.get(path_entity, 0) + 2
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))

@@ -141,8 +141,40 @@ def _tokens_from_text(text: str) -> list[str]:
     return tokens
 
 
-def match_entity_name(*texts: str | None) -> str | None:
-    """Return the highest-priority entity name matched from free text."""
+def match_entity_from_route(path: str | None) -> str | None:
+    """Prefer admin route segments over generic lexicon tokens (e.g. job-seeker ≠ Employment)."""
+    if not path:
+        return None
+    normalized = path.lower().replace("-", "_")
+    route_patterns: list[tuple[str, str]] = [
+        ("job_seeker", "JobSeeker"),
+        ("company_management", "Company"),
+        ("/company/", "Company"),
+        ("agency_management", "Agency"),
+        ("user_management", "SystemUser"),
+        ("task_management", "Task"),
+        ("holiday_management", "Holiday"),
+        ("prompt_template", "PromptTemplate"),
+        ("application_management", "Application"),
+        ("job_management", "Job"),
+        ("role_permission", "RolePermission"),
+        ("qmate", "QMate"),
+        ("second_screening", "SecondScreening"),
+        ("hearing_form", "HearingForm"),
+        ("reports", "Report"),
+    ]
+    for pattern, entity in route_patterns:
+        if pattern in normalized:
+            return entity
+    return None
+
+
+def match_entity_name(*texts: str | None, route_path: str | None = None) -> str | None:
+    """Return the highest-priority entity name matched from route path or free text."""
+    route_entity = match_entity_from_route(route_path)
+    if route_entity:
+        return route_entity
+
     scores: Counter[str] = Counter()
     for text in texts:
         if not text:
@@ -186,14 +218,13 @@ def merge_entity_maps(
 
     entities: list[DomainEntity] = []
     for name, refs in by_name.items():
-        # dedupe by field+screen
-        seen: set[tuple[str, str | None]] = set()
+        # dedupe by field name (same form repeated across edit screens)
+        seen: set[str] = set()
         unique: list[EntityFieldRef] = []
         for ref in refs:
-            key = (ref.field, ref.screen_id)
-            if key in seen:
+            if ref.field in seen:
                 continue
-            seen.add(key)
+            seen.add(ref.field)
             unique.append(ref)
         screens = sorted({ref.screen_id for ref in unique if ref.screen_id})
         # confidence scales with field diversity

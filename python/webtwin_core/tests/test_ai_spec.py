@@ -48,6 +48,7 @@ def test_is_export_noise_filters_tracking_and_nonces() -> None:
 
 def test_classify_route_path() -> None:
     assert classify_route_path("/") == "static"
+    assert classify_route_path("/forms/hearing/abc") == "form"
     assert classify_route_path("/product-category/men/") == "category"
     assert classify_route_path("/product/shirt/") == "product"
     assert classify_route_path("/cart-2/") == "cart"
@@ -291,3 +292,31 @@ def test_build_ai_spec_normalizes_flow_steps() -> None:
     assert spec.flows
     assert "Open `/`" in spec.flows[0].steps[0]
     assert "Navigate to `/about/`" in spec.flows[0].steps[1]
+
+
+def test_collapse_interactions_groups_identical_edit_screens() -> None:
+    from webtwin_core.reference_system.ai_spec import (
+        AiInteractionField,
+        AiScreenInteractions,
+        _collapse_interactions,
+    )
+
+    fields = [
+        AiInteractionField(name="first_name", label="名", input_type="text", entity="JobSeeker"),
+        AiInteractionField(name="email", label="Email", input_type="email", entity="Contact"),
+    ]
+    interactions = [
+        AiScreenInteractions(
+            screen_id=f"/job-seeker-management/edit/{item}",
+            path=f"/job-seeker-management/edit/{item}",
+            name="JobSeeker edit",
+            kind="static",
+            fields=fields,
+        )
+        for item in (458, 459, 460)
+    ]
+    collapsed = _collapse_interactions(interactions)
+    assert len(collapsed) == 1
+    assert collapsed[0].pattern == "/job-seeker-management/edit/:id"
+    assert collapsed[0].instance_count == 3
+    assert "/job-seeker-management/edit/458" in collapsed[0].examples

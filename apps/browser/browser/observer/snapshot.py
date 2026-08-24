@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 from webtwin_core.models import ElementSnapshot, FormSnapshot, Observation
 from webtwin_core.models.spa import ElementIdentity, RouteSnapshot
 
@@ -58,8 +58,21 @@ _COLLECT_JS = """() => {
     seen.add(key);
     let value = null;
     try {
-      if (['input','select','textarea'].includes(tag)) value = el.value;
-      else if (tag === 'a') value = el.getAttribute('href');
+      if (['input','select','textarea'].includes(tag)) {
+        value = el.value;
+        const inputType = (el.getAttribute('type') || 'text').toLowerCase();
+        if (tag === 'input' && ['text','url','search'].includes(inputType)) {
+          const raw = (el.value || '').trim();
+          if (raw.startsWith('/') || raw.includes('/forms/')) value = raw;
+        }
+      } else if (tag === 'a') {
+        value = el.getAttribute('href');
+      } else if (tag === 'button' || role === 'link') {
+        value = el.getAttribute('data-href')
+          || el.getAttribute('data-url')
+          || el.getAttribute('data-to')
+          || null;
+      }
     } catch (e) {}
     let options = [];
     if (tag === 'select') {
@@ -115,12 +128,16 @@ _COLLECT_JS = """() => {
 
 def _route_snapshot(page: Page) -> RouteSnapshot:
     parsed = urlparse(page.url)
+    try:
+        title = page.title()
+    except (PlaywrightTimeoutError, Exception):
+        title = parsed.path or page.url
     return RouteSnapshot(
         url=page.url,
         path=parsed.path or "/",
         search=parsed.query and f"?{parsed.query}" or "",
         hash=parsed.fragment and f"#{parsed.fragment}" or "",
-        title=page.title(),
+        title=title,
     )
 
 
@@ -167,7 +184,10 @@ def _framework_hints(page: Page) -> dict:
 
 
 def capture_observation(page: Page, investigation_id, *, with_screenshot: bool = True) -> Observation:
-    raw_elements = page.evaluate(_COLLECT_JS)
+    try:
+        raw_elements = page.evaluate(_COLLECT_JS)
+    except (PlaywrightTimeoutError, Exception):
+        raw_elements = []
     elements: list[ElementSnapshot] = []
     visible: list[str] = []
     interactive: list[str] = []

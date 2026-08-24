@@ -2,6 +2,7 @@
 
 from uuid import uuid4
 
+from webtwin_core.exploration.state import ExplorationState
 from webtwin_core.models.observation import ElementSnapshot, Observation
 from webtwin_core.models.spa import RouteSnapshot
 from webtwin_core.reference_system.site_graph import (
@@ -10,6 +11,8 @@ from webtwin_core.reference_system.site_graph import (
     merge_discovered_links,
     mark_links_visited,
     compute_site_graph_stats,
+    navigate_priority,
+    route_pattern_key,
 )
 from webtwin_core.reference_system import Screen, build_navigation
 from webtwin_core.models import ApplicationState, TimelineEvent, TimelineEventType
@@ -156,3 +159,55 @@ def test_build_site_graph_adds_unvisited_target_nodes() -> None:
     assert stats.total_internal == 2
     assert stats.total_visited_links == 1
     assert stats.coverage_pct == 0.5
+
+
+def test_navigate_priority_boosts_forms_and_details():
+    base = "http://localhost:3001/company-management/details/207"
+    forms = navigate_priority(base, "/forms/hearing/abc123token456789012345678")
+    details = navigate_priority(base, "/company-management/details/208")
+    edit = navigate_priority(base, "/company-management/edit/208")
+    assert forms < details < edit
+
+
+def test_route_pattern_key_collapses_opaque_tokens_only():
+    token_path = "/forms/hearing/7sMkD1pZ2SiaHg6l5rPktUy6xUhH5upaMQ0fuwzrAs9ySt8OO47sahvJ4C4GknC3"
+    assert route_pattern_key(token_path) == "/forms/hearing/:token"
+    assert route_pattern_key("/company-management/details/207") is None
+
+
+def test_extract_discovered_links_from_copy_link_input():
+    obs = Observation(
+        investigation_id=uuid4(),
+        url="http://localhost:3001/company-management/details/207",
+        title="Company",
+        route=RouteSnapshot(
+            url="http://localhost:3001/company-management/details/207",
+            path="/company-management/details/207",
+        ),
+        elements=[
+            ElementSnapshot(
+                tag="input",
+                selector="input[name=hearingLink]",
+                value="http://localhost:3001/forms/hearing/7sMkD1pZ2SiaHg6l5rPktUy6xUhH5upaMQ0fuwzrAs9ySt8OO47sahvJ4C4GknC3",
+                label="Hearing form link",
+                visible=True,
+            )
+        ],
+    )
+    links = extract_discovered_links(obs, origin_url=obs.url)
+    assert len(links) == 1
+    assert links[0].to_screen_id == (
+        "/forms/hearing/7sMkD1pZ2SiaHg6l5rPktUy6xUhH5upaMQ0fuwzrAs9ySt8OO47sahvJ4C4GknC3"
+    )
+
+
+def test_screen_visited_treats_hearing_tokens_as_one_pattern():
+    state = ExplorationState(
+        pages_seen_urls=[
+            "http://localhost:3001/forms/hearing/visitedToken1234567890123456789012"
+        ]
+    )
+    assert state._screen_visited(
+        "/forms/hearing/differentToken123456789012345678901234"
+    )
+    assert not state._screen_visited("/company-management/details/207")

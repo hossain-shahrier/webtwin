@@ -172,7 +172,12 @@ def build_clone_spec(
     ]
 
     api_hints: list[CloneApiHint] = []
+    from webtwin_core.reference_system.network_filter import is_relevant_api_url
+
     for event in network_events or []:
+        url = event.get("url")
+        if url and not is_relevant_api_url(str(url)):
+            continue
         api_hints.append(
             CloneApiHint(
                 method=event.get("method"),

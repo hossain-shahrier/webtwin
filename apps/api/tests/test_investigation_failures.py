@@ -1,4 +1,4 @@
-from uuid import uuid4
+from uuid import uuid4, UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -97,6 +97,31 @@ def test_resume_from_failed_restores_checkpoint(client: TestClient) -> None:
     response = client.post(f"/investigations/{investigation_id}/resume")
     assert response.status_code == 200
     assert response.json()["status"] == InvestigationStatus.EXPLORING.value
+
+
+def test_resume_clears_worker_claim(client: TestClient) -> None:
+    investigation_id = _create(client)
+    _advance_to_exploring(client, investigation_id)
+    inv_uuid = UUID(investigation_id)
+    store.investigation_claims[inv_uuid] = "dead-worker"
+    _transition(client, investigation_id, TransitionEvent.BROWSER_CRASH, reason="crash")
+    response = client.post(f"/investigations/{investigation_id}/resume")
+    assert response.status_code == 200
+    assert inv_uuid not in store.investigation_claims
+    pending = client.get("/investigations/pending").json()
+    assert any(item["id"] == investigation_id for item in pending)
+
+
+def test_auth_required_from_exploring(client: TestClient) -> None:
+    investigation_id = _create(client)
+    _advance_to_exploring(client, investigation_id)
+    result = _transition(
+        client,
+        investigation_id,
+        TransitionEvent.AUTH_REQUIRED,
+        auth_pause={"reason": "login_required", "resume_allowed": True},
+    )
+    assert result["status"] == InvestigationStatus.AUTH_REQUIRED.value
 
 
 def test_resume_without_checkpoint_returns_409(client: TestClient) -> None:

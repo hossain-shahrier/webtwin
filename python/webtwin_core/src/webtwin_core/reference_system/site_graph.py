@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -13,12 +14,86 @@ from pydantic import BaseModel, Field
 from webtwin_core.models.observation import Observation
 
 if TYPE_CHECKING:
+    from webtwin_core.models.observation import ElementSnapshot
     from webtwin_core.reference_system import NavigationEdge, Screen
 
 
 def normalize_screen_id(screen_id: str) -> str:
     """Canonical screen key for graph matching (trailing slash insensitive)."""
     return (screen_id or "/").rstrip("/") or "/"
+
+
+_OPAQUE_TOKEN = re.compile(r"^[A-Za-z0-9_-]{20,}$")
+
+
+def _is_opaque_token(part: str) -> bool:
+    """True for signed/random URL segments, not kebab-case route names."""
+    if len(part) < 20 or part.isdigit():
+        return False
+    if not _OPAQUE_TOKEN.match(part):
+        return False
+    if "-" in part and part.lower() == part:
+        return False
+    has_upper = any(char.isupper() for char in part)
+    has_lower = any(char.islower() for char in part)
+    has_digit = any(char.isdigit() for char in part)
+    return (has_upper and has_lower) or has_digit or len(part) >= 32
+
+
+def export_path_pattern(path: str) -> str:
+    """Collapse numeric IDs and opaque tokens for compact export grouping."""
+    parts = [part for part in normalize_screen_id(path).split("/") if part]
+    if not parts:
+        return "/"
+    out: list[str] = []
+    for part in parts:
+        if part.isdigit():
+            out.append(":id")
+        elif _is_opaque_token(part):
+            out.append(":token")
+        else:
+            out.append(part)
+    return "/" + "/".join(out)
+
+
+def route_pattern_key(screen_id: str) -> str | None:
+    """Pattern key for signed/tokenized routes (e.g. /forms/hearing/:token).
+
+    Returns None when the path has no opaque token segment so numeric detail
+    pages like /company-management/details/207 stay distinct.
+    """
+    parts = [part for part in normalize_screen_id(screen_id).split("/") if part]
+    if not parts:
+        return None
+    out: list[str] = []
+    has_token = False
+    for part in parts:
+        if _is_opaque_token(part):
+            out.append(":token")
+            has_token = True
+        else:
+            out.append(part)
+    if not has_token:
+        return None
+    return "/" + "/".join(out)
+
+
+def href_from_element(element: "ElementSnapshot") -> str | None:
+    """Extract an internal navigation href from anchors, buttons, or copy-link inputs."""
+    raw = (element.value or "").strip()
+    if not raw:
+        return None
+    if element.tag == "a":
+        return raw
+    if raw.startswith("/") or raw.startswith("#"):
+        return raw
+    if raw.startswith("http://") or raw.startswith("https://"):
+        parsed = urlparse(raw)
+        return parsed.path or raw
+    if "/forms/" in raw:
+        parsed = urlparse(urljoin("https://placeholder.invalid", raw))
+        return parsed.path or None
+    return None
 
 
 def screen_id_from_url(url: str) -> str:
@@ -144,6 +219,12 @@ def navigate_priority(base_url: str, href: str) -> int:
     depth = len([p for p in path.split("/") if p])
     if path in {"/", ""}:
         score -= 10
+    if "/forms/" in path:
+        score -= 15
+    if "/details/" in path:
+        score -= 4
+    if "/edit/" in path:
+        score += 4
     if any(token in path for token in ("/about", "/contact", "/legal", "/policies")):
         score -= 5
     if "/product-category/" in path:
@@ -169,9 +250,7 @@ def extract_discovered_links(
     links: list[DiscoveredLink] = []
 
     for element in observation.elements:
-        if element.tag != "a":
-            continue
-        href = (element.value or "").strip()
+        href = href_from_element(element)
         if not href or _should_skip_href(href):
             continue
         signature = (from_screen_id, href)

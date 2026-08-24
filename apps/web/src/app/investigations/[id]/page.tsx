@@ -28,6 +28,11 @@ import {
   exportAiSpec,
   pinGoldenCatalog,
 } from '../../../lib/api';
+import {
+  copyOrDownloadText,
+  exportFilename,
+  exportResultMessage,
+} from '../../../lib/export-download';
 import type {
   BusinessRule,
   EvaluationRun,
@@ -231,14 +236,20 @@ export default function InvestigationDetailPage() {
             onClick={async () => {
               try {
                 const payload = await exportAiSpec(investigation.id);
-                await navigator.clipboard.writeText(payload.markdown);
-                setExportNote('Copied AI context to clipboard');
+                const filename = exportFilename(investigation.id, 'ai-context', 'md');
+                const result = await copyOrDownloadText({
+                  text: payload.markdown,
+                  filename,
+                  mime: 'text/markdown;charset=utf-8',
+                });
+                setExportNote(exportResultMessage(result, 'AI context', filename));
               } catch (err) {
                 setExportNote(
                   err instanceof Error ? err.message : 'Export failed',
                 );
               }
             }}
+            title="Copies markdown to clipboard, or downloads .md if the export is large"
           >
             Copy AI Context
           </button>
@@ -249,14 +260,20 @@ export default function InvestigationDetailPage() {
             onClick={async () => {
               try {
                 const payload = await exportCursorContext(investigation.id);
-                await navigator.clipboard.writeText(payload.markdown);
-                setExportNote('Copied AI context to clipboard');
+                const filename = exportFilename(investigation.id, 'cursor-context', 'md');
+                const result = await copyOrDownloadText({
+                  text: payload.markdown,
+                  filename,
+                  mime: 'text/markdown;charset=utf-8',
+                });
+                setExportNote(exportResultMessage(result, 'Cursor context', filename));
               } catch (err) {
                 setExportNote(
                   err instanceof Error ? err.message : 'Export failed',
                 );
               }
             }}
+            title="Copies markdown to clipboard, or downloads .md for Cursor chat"
           >
             Copy for Cursor
           </button>
@@ -267,8 +284,14 @@ export default function InvestigationDetailPage() {
             onClick={async () => {
               try {
                 const spec = await exportCloneSpec(investigation.id);
-                await navigator.clipboard.writeText(JSON.stringify(spec, null, 2));
-                setExportNote('Copied Clone Spec JSON to clipboard');
+                const json = JSON.stringify(spec, null, 2);
+                const filename = exportFilename(investigation.id, 'clone-spec', 'json');
+                const result = await copyOrDownloadText({
+                  text: json,
+                  filename,
+                  mime: 'application/json;charset=utf-8',
+                });
+                setExportNote(exportResultMessage(result, 'Clone Spec JSON', filename));
               } catch (err) {
                 setExportNote(
                   err instanceof Error ? err.message : 'Clone spec export failed',
@@ -330,7 +353,11 @@ export default function InvestigationDetailPage() {
               type="button"
               onClick={async () => {
                 try {
-                  await resumeFailedInvestigation(investigation.id);
+                  const updated = await resumeFailedInvestigation(investigation.id);
+                  setExportNote(
+                    `Resumed at checkpoint (status: ${updated.status}). ` +
+                      'Ensure the browser worker is running to continue the crawl.',
+                  );
                   await refresh();
                 } catch (err) {
                   setError(
@@ -621,13 +648,19 @@ export default function InvestigationDetailPage() {
                               ? ` · screens ${entity.screen_ids.slice(0, 3).join(', ')}`
                               : ''}
                           </p>
-                          {entity.fields.slice(0, 5).map((ref) => (
-                            <p key={`${entity.name}-${ref.field}`} className={styles.hint}>
+                          {entity.fields.slice(0, 5).map((ref, idx) => (
+                            <p
+                              key={`${entity.name}-field-${idx}-${ref.field}`}
+                              className={styles.hint}
+                            >
                               {ref.label ?? ref.field}
                             </p>
                           ))}
-                          {entity.rule_names.slice(0, 3).map((name) => (
-                            <p key={`${entity.name}-rule-${name}`} className={styles.hint}>
+                          {entity.rule_names.slice(0, 3).map((name, idx) => (
+                            <p
+                              key={`${entity.name}-rule-${idx}-${name}`}
+                              className={styles.hint}
+                            >
                               rule · {name}
                             </p>
                           ))}

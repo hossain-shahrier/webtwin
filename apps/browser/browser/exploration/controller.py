@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 import random
 import time
 from uuid import UUID
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 from webtwin_core.exploration import (
     ExplorationBudget,
     ExplorationState,
@@ -23,12 +24,19 @@ from browser.exploration.action_space import inventory_from_observation
 from browser.exploration.navigate import goto_resilient
 from browser.observer.settle import SettleResult, settle_after_action
 from browser.observer.snapshot import capture_observation
+from browser.session.launch import action_timeout_ms
+
+
+def _action_timeout_ms() -> int:
+    headless = os.environ.get("WEBTWIN_HEADLESS", "true").lower() == "true"
+    return action_timeout_ms(headless=headless)
 
 
 def execute_planned_action(page: Page, plan: PlannedAction) -> SettleResult:
     action = plan.action
     locator = page.locator(action.selector)
     expect_url = None
+    click_timeout = _action_timeout_ms()
 
     if action.type.value == "select" and plan.value is not None:
         locator.first.select_option(plan.value)
@@ -41,7 +49,7 @@ def execute_planned_action(page: Page, plan: PlannedAction) -> SettleResult:
         if locator.count() == 0 and plan.value and str(plan.value).startswith("#"):
             page.evaluate("(hash) => { location.hash = hash }", plan.value)
         else:
-            locator.first.click(timeout=10000)
+            locator.first.click(timeout=click_timeout)
         href = action.metadata.get("href") or plan.value
         if href:
             expect_url = href if href.startswith("#") else href.lstrip("#")
@@ -62,7 +70,7 @@ def execute_planned_action(page: Page, plan: PlannedAction) -> SettleResult:
             delta,
         )
     elif action.type.value == "click":
-        locator.first.click(timeout=10000)
+        locator.first.click(timeout=click_timeout)
 
     return settle_after_action(page, expect_url_contains=None if action.type.value == "navigate" else expect_url)
 
@@ -91,6 +99,7 @@ class ExplorationController:
         self.spa_mode = spa_mode
         self.goal = goal
         self.last_settle: SettleResult | None = None
+        self.observe_failed = False
 
     @property
     def blocked_unsafe_actions(self) -> int:
@@ -122,7 +131,18 @@ class ExplorationController:
         elapsed = time.monotonic() - self._started
         if self.budget.exhausted(elapsed):
             return None
-        observation = self.observe(page, investigation_id)
+        self.observe_failed = False
+        try:
+            observation = self.observe(page, investigation_id)
+        except (PlaywrightTimeoutError, Exception) as error:
+            self.observe_failed = True
+            self.state.settle_timeouts += 1
+            self.last_settle = SettleResult(
+                ok=False,
+                reason=f"observe failed: {str(error)[:200]}",
+                elapsed_ms=0,
+            )
+            return None
         return self.plan_from_observation(observation)
 
     def apply_plan(self, page: Page, plan: PlannedAction) -> SettleResult:

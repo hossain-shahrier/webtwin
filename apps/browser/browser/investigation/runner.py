@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from uuid import UUID
 
@@ -25,6 +26,7 @@ from browser.exploration.navigate import goto_resilient
 from browser.exploration.progress_sync import ExplorationProgressSync
 from browser.observer.snapshot import capture_observation
 from browser.recorder.timeline import TimelineRecorder
+from browser.session.launch import launch_chromium
 from browser.session.manager import SessionManager
 from browser.session.auth_wait import wait_for_dashboard_auth_resume
 from browser.session.consent import dismiss_consent_banners
@@ -322,6 +324,29 @@ def _fetch_rules(client: ApiClient, investigation_id: UUID) -> list[BusinessRule
     ]
 
 
+def _last_url_from_timeline(client: ApiClient, investigation_id: UUID) -> str | None:
+    """Fallback resume URL when exploration progress lacks last_url."""
+    from webtwin_core.models.events import TimelineEventType
+
+    try:
+        events = client.get_timeline(investigation_id)
+    except Exception:
+        return None
+    for event in reversed(events):
+        if event.type not in {TimelineEventType.NAVIGATE, TimelineEventType.ROUTE}:
+            continue
+        description = event.description or ""
+        if description.startswith("Opened "):
+            return description[7:].strip()
+        href_match = re.search(r"href=(https?://[^\s\])]+)", description)
+        if href_match:
+            return href_match.group(1)
+        url_match = re.search(r"=(https?://[^\s\])]+)", description)
+        if url_match:
+            return url_match.group(1)
+    return None
+
+
 def _hydrate_controller_from_checkpoint(
     client: ApiClient,
     investigation: Investigation,
@@ -335,6 +360,7 @@ def _hydrate_controller_from_checkpoint(
         apply_progress,
         progress_from_checkpoint,
         rebuild_frontier_from_links,
+        reset_budget_for_resume,
     )
 
     progress = progress_from_checkpoint(investigation.checkpoint)
@@ -348,7 +374,14 @@ def _hydrate_controller_from_checkpoint(
     if progress is None:
         return None
 
+    if not progress.last_url:
+        fallback = _last_url_from_timeline(client, investigation.id)
+        if fallback:
+            progress.last_url = fallback
+            print(f"[WebTwin] Resume URL from timeline fallback: {fallback[:100]}")
+
     apply_progress(controller.state, controller.budget, progress)
+    reset_budget_for_resume(controller.budget)
     links = client.list_discovered_links(investigation.id)
     origin = progress.last_url or investigation.target_url
     added = rebuild_frontier_from_links(controller.state, links, origin_url=origin)
@@ -368,6 +401,8 @@ def _exploration_loop(
     timeline: TimelineRecorder,
     network=None,
     progress_sync: ExplorationProgressSync | None = None,
+    *,
+    resuming: bool = False,
 ) -> int:
     """Observe → plan → act → diff → rules until budget or coverage exhausted."""
     from urllib.parse import urlparse
@@ -383,12 +418,13 @@ def _exploration_loop(
     controller.record_state_signature(before_observation)
     client.record_observation(before_observation)
     before_state = client.record_state(before_observation.to_application_state(sequence=1))
+    open_label = f"Resumed at {page.url}" if resuming else f"Opened {page.url}"
     timeline.record(
         client.record_event(
             TimelineEvent(
                 investigation_id=investigation_id,
                 type=TimelineEventType.NAVIGATE,
-                description=f"Opened {page.url}",
+                description=open_label,
                 state_after_id=before_state.id,
             )
         )
@@ -406,6 +442,17 @@ def _exploration_loop(
     while True:
         plan = controller.plan_next(page, investigation_id)
         if plan is None:
+            if controller.observe_failed:
+                controller.observe_failed = False
+                if progress_sync is not None:
+                    progress_sync.maybe_save(
+                        controller.state,
+                        controller.budget,
+                        last_url=page.url,
+                        force=True,
+                        reason="observe_timeout",
+                    )
+                continue
             break
 
         investigation = client.get_investigation(investigation_id)
@@ -622,7 +669,7 @@ def run_exploration_and_verification(
         )
 
     progress_sync = ExplorationProgressSync(
-        client, investigation.id, policy=policy, every_actions=5
+        client, investigation.id, policy=policy, every_actions=2
     )
 
     # Preserve saved auth/session when resuming mid-investigation.
@@ -635,9 +682,11 @@ def run_exploration_and_verification(
 
     skip_exploration = resume_phase in _POST_EXPLORATION_STATUSES
     entry_url = resume_url or getattr(investigation, "start_url", None) or target_url
+    if resume_url:
+        print(f"[WebTwin] Resuming browser at {entry_url[:120]}")
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=headless)
+        browser = launch_chromium(playwright, headless=headless)
         context = session_store.new_context(browser, investigation.id)
         page = context.new_page()
         network = NetworkCollector(investigation.id)
@@ -658,6 +707,7 @@ def run_exploration_and_verification(
                     timeline,
                     network=network,
                     progress_sync=progress_sync,
+                    resuming=resume_url is not None,
                 )
 
             candidate_rules = _fetch_rules(client, investigation.id)
@@ -776,7 +826,7 @@ def run_discovery_and_verification(
     _transition(client, investigation.id, TransitionEvent.INIT_COMPLETE)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=headless)
+        browser = launch_chromium(playwright, headless=headless)
         context = session_store.new_context(browser, investigation.id)
         page = context.new_page()
         network = NetworkCollector(investigation.id)

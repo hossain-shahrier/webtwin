@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 from webtwin_core.models import Evidence, EvidenceType
+from webtwin_core.reference_system.network_filter import is_relevant_api_url
 
 
 SENSITIVE_HEADER_KEYS = {
@@ -103,6 +104,9 @@ class NetworkCollector:
                     shape = {"type": "opaque", "content_type": content_type}
             except Exception:
                 shape = {"type": "unreadable"}
+
+            if not is_relevant_api_url(response.url):
+                return
 
             event = NetworkEvent(
                 investigation_id=self.investigation_id,

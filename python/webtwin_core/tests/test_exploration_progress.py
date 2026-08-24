@@ -40,6 +40,19 @@ def test_snapshot_and_apply_roundtrip():
     assert restored_budget.pages_seen == 2
 
 
+def test_reset_budget_for_resume():
+    from webtwin_core.exploration.progress import reset_budget_for_resume
+
+    budget = ExplorationBudget(max_actions=300, max_pages=80)
+    budget.actions_used = 300
+    budget.pages_seen = 80
+    budget.experiments_used = 50
+    reset_budget_for_resume(budget)
+    assert budget.actions_used == 0
+    assert budget.pages_seen == 0
+    assert budget.experiments_used == 0
+
+
 def test_progress_caps_long_lists():
     progress = ExplorationProgress(
         frontier=[f"/p{i}" for i in range(500)],

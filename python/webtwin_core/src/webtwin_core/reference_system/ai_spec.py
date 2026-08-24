@@ -20,6 +20,8 @@ from webtwin_core.reference_system.clone_spec import (
     _rule_to_spec,
 )
 from webtwin_core.reference_system.entities import DomainEntity
+from webtwin_core.reference_system.site_graph import export_path_pattern
+from webtwin_core.reference_system.network_filter import is_relevant_api_url
 from webtwin_core.reference_system.site_graph import DiscoveredLink
 
 _INTERACTION_INPUT_TYPES = frozenset(
@@ -63,13 +65,14 @@ _GLOBAL_CHROME_MIN_SCREENS = 3
 _GLOBAL_CHROME_RATIO = 0.5
 _ROUTE_GROUP_LABELS = {
     "static": "Marketing & info",
+    "form": "Forms & workflows",
     "auth": "Authentication & account",
     "cart": "Cart & checkout",
     "category": "Product categories",
     "product": "Product detail",
     "other": "Other",
 }
-_ROUTE_GROUP_ORDER = ("static", "auth", "cart", "category", "product", "other")
+_ROUTE_GROUP_ORDER = ("static", "form", "auth", "cart", "category", "product", "other")
 
 
 def is_interaction_field(field: ScreenField) -> bool:
@@ -111,6 +114,8 @@ def filter_interaction_fields(fields: list[ScreenField]) -> list[ScreenField]:
 
 def classify_route_path(path: str) -> str:
     normalized = (path or "/").lower()
+    if "/forms/" in normalized:
+        return "form"
     if "login" in normalized or "my-account" in normalized or normalized.endswith("/account"):
         return "auth"
     if "cart" in normalized or "checkout" in normalized:
@@ -156,6 +161,24 @@ class AiScreenInteractions(BaseModel):
     name: str
     kind: str = "static"
     fields: list[AiInteractionField] = Field(default_factory=list)
+
+
+class AiCollapsedInteractions(BaseModel):
+    pattern: str
+    name: str
+    kind: str = "static"
+    fields: list[AiInteractionField] = Field(default_factory=list)
+    instance_count: int = 1
+    examples: list[str] = Field(default_factory=list)
+
+
+class AiCollapsedRoute(BaseModel):
+    pattern: str
+    name: str
+    primary_entity: str | None = None
+    kind: str = "static"
+    instance_count: int = 1
+    examples: list[str] = Field(default_factory=list)
 
 
 class AiNavEdge(BaseModel):
@@ -218,6 +241,77 @@ def _compact_navigation(
         key=lambda item: (not item.visited, item.from_screen_id, item.to_screen_id or item.href),
     )
     return ordered[:max_edges]
+
+
+def _field_signature(fields: list[AiInteractionField]) -> tuple[tuple[str, str | None, str | None, str | None], ...]:
+    return tuple((field.name, field.input_type, field.label, field.entity) for field in fields)
+
+
+def _collapse_interactions(
+    interactions: list[AiScreenInteractions],
+) -> list[AiCollapsedInteractions]:
+    grouped: dict[tuple[str, str, str, tuple], AiCollapsedInteractions] = {}
+    for screen in interactions:
+        pattern = export_path_pattern(screen.path)
+        signature = _field_signature(screen.fields)
+        key = (pattern, screen.name, screen.kind, signature)
+        existing = grouped.get(key)
+        if existing is None:
+            grouped[key] = AiCollapsedInteractions(
+                pattern=pattern,
+                name=screen.name,
+                kind=screen.kind,
+                fields=screen.fields,
+                instance_count=1,
+                examples=[screen.path],
+            )
+            continue
+        existing.instance_count += 1
+        if len(existing.examples) < 3 and screen.path not in existing.examples:
+            existing.examples.append(screen.path)
+    return sorted(grouped.values(), key=lambda item: (item.kind, item.pattern))
+
+
+def _collapse_routes(routes: list[AiRouteSpec]) -> list[AiCollapsedRoute]:
+    grouped: dict[tuple[str, str, str | None, str], AiCollapsedRoute] = {}
+    for route in routes:
+        pattern = export_path_pattern(route.path)
+        key = (pattern, route.name, route.primary_entity, route.kind)
+        existing = grouped.get(key)
+        if existing is None:
+            grouped[key] = AiCollapsedRoute(
+                pattern=pattern,
+                name=route.name,
+                primary_entity=route.primary_entity,
+                kind=route.kind,
+                instance_count=1,
+                examples=[route.path],
+            )
+            continue
+        existing.instance_count += 1
+        if len(existing.examples) < 3 and route.path not in existing.examples:
+            existing.examples.append(route.path)
+    return sorted(grouped.values(), key=lambda item: (item.kind, item.pattern))
+
+
+def _format_screen_patterns(screen_ids: list[str], *, limit: int = 4) -> str:
+    if not screen_ids:
+        return "—"
+    patterns: dict[str, list[str]] = {}
+    for screen_id in screen_ids:
+        pattern = export_path_pattern(screen_id)
+        patterns.setdefault(pattern, []).append(screen_id)
+    parts: list[str] = []
+    for pattern, instances in sorted(patterns.items()):
+        if len(instances) > 1:
+            parts.append(f"`{pattern}` (×{len(instances)})")
+        else:
+            parts.append(f"`{instances[0]}`")
+        if len(parts) >= limit:
+            break
+    if len(patterns) > limit:
+        parts.append("…")
+    return ", ".join(parts)
 
 
 def _field_to_ai(field: ScreenField) -> AiInteractionField:
@@ -341,11 +435,15 @@ def _normalize_flow_step(step: str) -> str:
 
 def _entity_fields_for_ai(entity: DomainEntity) -> list[str]:
     lines: list[str] = []
+    seen: set[str] = set()
     for ref in entity.fields:
+        if ref.field in seen:
+            continue
         if ref.field == "a" or ref.field.startswith("a[href"):
             continue
         if is_export_noise(ScreenField(name=ref.field, label=ref.label)):
             continue
+        seen.add(ref.field)
         label = f" ({ref.label})" if ref.label else ""
         lines.append(f"  - `{ref.field}`{label}")
     for rule_name in entity.rule_names[:5]:
@@ -394,7 +492,7 @@ def format_ai_spec_markdown(
     if entities:
         lines.extend(["## Domain entities"])
         for entity in entities:
-            screens = ", ".join(f"`{sid}`" for sid in entity.screen_ids[:4]) or "—"
+            screens = _format_screen_patterns(entity.screen_ids)
             field_lines = _entity_fields_for_ai(entity)
             lines.append(
                 f"- **{entity.name}** (confidence={entity.confidence:.2f}) — screens: {screens}"
@@ -412,22 +510,34 @@ def format_ai_spec_markdown(
         lines.append("")
 
     lines.append("## Routes")
-    for group in spec.route_groups:
-        lines.append(f"### {group.label}")
-        for route in group.routes:
-            entity = f" · entity `{route.primary_entity}`" if route.primary_entity else ""
-            lines.append(f"- `{route.path}` — {route.name}{entity}")
+    collapsed_routes = _collapse_routes([route for group in spec.route_groups for route in group.routes])
+    current_kind: str | None = None
+    for route in collapsed_routes:
+        if route.kind != current_kind:
+            current_kind = route.kind
+            lines.append(f"### {_ROUTE_GROUP_LABELS.get(current_kind, current_kind)}")
+        entity = f" · entity `{route.primary_entity}`" if route.primary_entity else ""
+        count = f" (×{route.instance_count})" if route.instance_count > 1 else ""
+        lines.append(f"- `{route.pattern}` — {route.name}{entity}{count}")
+        if route.instance_count > 1 and route.examples:
+            examples = ", ".join(f"`{path}`" for path in route.examples)
+            lines.append(f"  - _Examples: {examples}_")
     lines.append("")
 
     lines.extend(["## Page-specific interactions"])
     if not spec.interactions:
         lines.append("_No page-specific form controls beyond global layout._")
-    current_kind: str | None = None
-    for screen in spec.interactions:
+    collapsed = _collapse_interactions(spec.interactions)
+    current_kind = None
+    for screen in collapsed:
         if screen.kind != current_kind:
             current_kind = screen.kind
             lines.append(f"### {_ROUTE_GROUP_LABELS.get(current_kind, current_kind)}")
-        lines.append(f"#### {screen.path} — {screen.name}")
+        count = f" (×{screen.instance_count})" if screen.instance_count > 1 else ""
+        lines.append(f"#### `{screen.pattern}` — {screen.name}{count}")
+        if screen.instance_count > 1 and screen.examples:
+            examples = ", ".join(f"`{path}`" for path in screen.examples)
+            lines.append(f"_Examples: {examples}_")
         for field in screen.fields:
             lines.append(_format_field_line(field))
 
@@ -520,6 +630,9 @@ def build_ai_spec(
 
     api_hints: list[CloneApiHint] = []
     for event in network_events or []:
+        url = event.get("url")
+        if url and not is_relevant_api_url(str(url)):
+            continue
         api_hints.append(
             CloneApiHint(
                 method=event.get("method"),
@@ -555,6 +668,8 @@ def build_ai_spec(
         "Implement verified rules exactly; treat candidates as hypotheses only.",
         "Global layout fields appear once — reuse across all pages.",
         "Use route groups for site structure; page-specific interactions for unique forms.",
+        "Domain entity names are inferred from form tokens — validate against your OpenAPI/models.",
+        "API hints exclude Vite/webpack dev assets; real backend routes may need deeper crawl or OpenAPI.",
         "Do not invent API contracts or role permissions not listed here.",
         "Match behavior and field logic, not pixel-perfect visual design.",
     ]

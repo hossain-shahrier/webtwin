@@ -24,7 +24,7 @@ class ExplorationProgressSync:
         investigation_id: UUID,
         *,
         policy: str | None = None,
-        every_actions: int = 5,
+        every_actions: int = 2,
     ) -> None:
         self.client = client
         self.investigation_id = investigation_id

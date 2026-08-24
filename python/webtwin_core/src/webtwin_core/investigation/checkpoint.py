@@ -17,11 +17,25 @@ CHECKPOINT_STATUSES = {
 }
 
 
+FAIL_EVENTS = {
+    TransitionEvent.FAIL,
+    TransitionEvent.BROWSER_CRASH,
+    TransitionEvent.AUTH_TIMEOUT,
+}
+
+
 def save_checkpoint(
     investigation: Investigation,
     event: TransitionEvent,
     observation_count: int = 0,
 ) -> None:
+    if event in FAIL_EVENTS:
+        # Keep exploration + resume status intact; only stamp failure metadata.
+        if investigation.checkpoint is not None:
+            investigation.checkpoint.last_event = event
+            investigation.checkpoint.saved_at = datetime.now(UTC)
+        return
+
     if investigation.status not in CHECKPOINT_STATUSES:
         return
 
