@@ -149,4 +149,4 @@ def test_wizard_restore_tape_from_timeline_and_setup() -> None:
     assert any(step.field == "start_date" for step in tape.steps)
     enriched = attach_restore_tapes([rule], events)[0]
     assert enriched.restore_tape
-    assert enriched.cross_screen is True
+    assert enriched.cross_screen is True  # includes navigate step
