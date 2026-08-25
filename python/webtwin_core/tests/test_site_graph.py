@@ -292,3 +292,30 @@ def test_coverage_excludes_fragment_and_route_links():
     assert stats.total_internal == 2
     assert stats.coverage_pct == 0.5
     assert all("#" not in sample for sample in stats.unvisited_sample)
+
+
+def test_coverage_normalizes_trailing_slash_targets():
+    from webtwin_core.reference_system.site_graph import DiscoveredLink
+
+    investigation_id = uuid4()
+    links = [
+        DiscoveredLink(
+            investigation_id=investigation_id,
+            from_screen_id="/",
+            to_screen_id="/about",
+            href="/about",
+            link_type=LinkType.NAVIGATE,
+            visited=True,
+        ),
+        DiscoveredLink(
+            investigation_id=investigation_id,
+            from_screen_id="/",
+            to_screen_id="/about/",
+            href="/about/",
+            link_type=LinkType.NAVIGATE,
+            visited=False,
+        ),
+    ]
+    screens = [Screen(id="/", name="Home", url="https://shop.example/", path="/")]
+    stats = compute_site_graph_stats(links, screens, origin_url="https://shop.example/")
+    assert stats.coverage_pct == 1.0

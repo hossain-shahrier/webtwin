@@ -24,6 +24,7 @@ def test_generate_verification_experiments_uses_select_options() -> None:
     from webtwin_core.verification.engine import _alternate_value
 
     assert _alternate_value("IT", ["IT", "FR", "DE"]) == "FR"
+    # Non-binary select alternates must NOT invent exclusive visibility FPs
     rule = BusinessRule(
         investigation_id=__import__("uuid").uuid4(),
         name="country shows province",
@@ -31,7 +32,47 @@ def test_generate_verification_experiments_uses_select_options() -> None:
         effect=RuleEffect(field="province", visible=True),
     )
     experiments = generate_verification_experiments(rule, alternate_options=["IT", "FR", "DE"])
-    assert any(exp.set_fields.get("country") == "FR" for exp in experiments)
+    assert experiments[0].set_fields["country"] == "IT"
+    assert not any(
+        exp.set_fields.get("country") == "FR" and exp.expectations.get("province", {}).get("visible") is False
+        for exp in experiments
+    )
+
+
+def test_clicked_rule_includes_setup_and_skips_network_by_default() -> None:
+    rule = BusinessRule(
+        investigation_id=__import__("uuid").uuid4(),
+        name="submit shows validation_error",
+        condition=RuleCondition(field="submit", operator="clicked", value=True),
+        effect=RuleEffect(field="validation_error", visible=True),
+        setup_fields={"start_date": "2020-01-01", "end_date": "2019-01-01"},
+    )
+    experiments = generate_verification_experiments(rule)
+    assert len(experiments) == 1
+    assert experiments[0].set_fields["submit"] == "__click__"
+    assert experiments[0].set_fields["start_date"] == "2020-01-01"
+    assert experiments[0].network_expectations == {}
+
+
+def test_summarize_verification_budget_is_inconclusive_not_contradicted() -> None:
+    rule = BusinessRule(
+        investigation_id=__import__("uuid").uuid4(),
+        name="test",
+        condition=RuleCondition(field="condition", operator="equals", value="no"),
+        effect=RuleEffect(field="reason", visible=True),
+        confidence=0.6,
+    )
+    results = [
+        VerificationExperimentResult(
+            experiment_id=__import__("uuid").uuid4(),
+            passed=False,
+            details="budget",
+            inconclusive=True,
+        ),
+    ]
+    run = summarize_verification(rule, results)
+    assert run.status == RuleStatus.UNDER_VERIFICATION
+    assert run.confidence == 0.6
 
 
 def test_summarize_verification_marks_verified_when_all_pass() -> None:

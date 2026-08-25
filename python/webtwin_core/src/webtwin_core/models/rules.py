@@ -30,3 +30,9 @@ class BusinessRule(BaseModel):
     knowledge_kind: KnowledgeKind = KnowledgeKind.INFERRED
     evidence_ids: list[UUID] = Field(default_factory=list)
     verification_run_ids: list[UUID] = Field(default_factory=list)
+    # Form values that must be present before the condition can be tested (e.g. dates before submit)
+    setup_fields: dict[str, str] = Field(default_factory=dict)
+    condition_selector: str | None = None
+    effect_selector: str | None = None
+    condition_selector_candidates: list[str] = Field(default_factory=list)
+    effect_selector_candidates: list[str] = Field(default_factory=list)

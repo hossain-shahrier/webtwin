@@ -63,6 +63,8 @@ class PostgresStore:
         self.network_events = _EntityMap(self, "network_event")
         self.discovered_links = _EntityMap(self, "discovered_link")
         self.investigation_claims: dict[UUID, str] = {}
+        self.investigation_claim_at: dict[UUID, object] = {}
+        self.audit_events: dict[UUID, object] = {}
         self.auth_form_submissions: dict[UUID, object] = {}
         # Process-local catalog cache + durable catalog store
         self.application_catalogs: dict[str, ApplicationCatalog] = {}
@@ -75,6 +77,10 @@ class PostgresStore:
 
     def clear(self) -> None:
         self.application_catalogs.clear()
+        self.investigation_claims.clear()
+        self.investigation_claim_at.clear()
+        self.audit_events.clear()
+        self.auth_form_submissions.clear()
         with self._session_factory() as session:
             for table in (
                 NetworkEventRow,

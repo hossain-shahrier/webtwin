@@ -157,25 +157,10 @@ def _locate_rule_context(
 
 
 def _set_field(page: Page, field: str, value: str) -> None:
-    from browser.observer.settle import settle_after_action
+    """Delegate to verification locator path so explore and verify stay aligned."""
+    from browser.verification.runner import _set_field as verify_set_field
 
-    locator = page.locator(
-        f'[data-testid="{field}"], #{field}, [name="{field}"], [aria-label="{field}"]'
-    )
-    if value == "__click__":
-        locator.first.click()
-        settle_after_action(page)
-        return
-    if locator.count() == 0:
-        raise RuntimeError(f"Field not found: {field}")
-    tag = locator.first.evaluate("(el) => el.tagName.toLowerCase()")
-    if tag == "select":
-        locator.first.select_option(value)
-    elif tag == "button" or (tag == "input" and locator.first.get_attribute("type") in {"button", "submit"}):
-        locator.first.click()
-    else:
-        locator.first.fill(value)
-    settle_after_action(page)
+    verify_set_field(page, field, value)
 
 
 def _transition(

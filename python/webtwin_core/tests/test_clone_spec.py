@@ -47,6 +47,9 @@ def test_build_clone_spec_includes_verified_tiers() -> None:
         effect=RuleEffect(field="province", visible=True),
         status=RuleStatus.VERIFIED,
         confidence=0.95,
+        condition_selector="#country",
+        effect_selector="#province",
+        setup_fields={"email": "user@example.com"},
     )
     reference = build_reference_system_context(
         investigation,
@@ -61,5 +64,9 @@ def test_build_clone_spec_includes_verified_tiers() -> None:
     rule_spec = spec.behavior["verified"][0]
     assert rule_spec.test_scenario
     assert "country" in rule_spec.test_scenario
+    assert rule_spec.condition_selector == "#country"
+    assert rule_spec.effect_selector == "#province"
+    assert "[REDACTED" in rule_spec.setup_fields.get("email", "")
+    assert "user@example.com" not in rule_spec.setup_fields.get("email", "")
     assert spec.site_graph is not None
     assert spec.site_graph.coverage_pct >= 0

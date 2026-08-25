@@ -360,9 +360,14 @@ def compute_site_graph_stats(
 ) -> SiteGraphStats:
     internal = [link for link in links if _is_crawlable_internal(link)]
     visited_internal = [link for link in internal if link.visited]
-    unique_targets = {link.to_screen_id for link in internal if link.to_screen_id}
+    # Trailing-slash insensitive — /about and /about/ must not double-count
+    unique_targets = {
+        normalize_screen_id(link.to_screen_id)
+        for link in internal
+        if link.to_screen_id
+    }
     visited_targets = {
-        link.to_screen_id
+        normalize_screen_id(link.to_screen_id)
         for link in internal
         if link.visited and link.to_screen_id
     }

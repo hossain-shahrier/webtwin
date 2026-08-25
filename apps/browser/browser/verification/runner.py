@@ -16,11 +16,25 @@ from browser.observer.settle import settle_after_action
 from browser.observer.snapshot import capture_observation
 
 
-def _candidates_for_field(observation: Observation | None, field: str) -> list[str]:
+def _candidates_for_field(
+    observation: Observation | None,
+    field: str,
+    *,
+    rule: BusinessRule | None = None,
+) -> list[str]:
     """Prefer observation selectors/stable_key candidates over name-only heuristics."""
-    if observation is None:
-        return []
     candidates: list[str] = []
+    if rule is not None:
+        if field == rule.condition.field:
+            if rule.condition_selector:
+                candidates.append(rule.condition_selector)
+            candidates.extend(rule.condition_selector_candidates or [])
+        if field == rule.effect.field:
+            if rule.effect_selector:
+                candidates.append(rule.effect_selector)
+            candidates.extend(rule.effect_selector_candidates or [])
+    if observation is None:
+        return candidates
     for element in observation.elements:
         keys = {
             element.stable_key,
@@ -51,6 +65,8 @@ def _resolve_locator(page: Page, field: str, candidates: list[str] | None = None
             f"#{field}",
             f'[name="{field}"]',
             f'[aria-label="{field}"]',
+            f'button:has-text("{field}")',
+            f'input[type="submit"][value="{field}"]',
         ]
     )
     # de-dupe preserving order
@@ -76,9 +92,10 @@ def _set_field(page: Page, field: str, value: str, *, candidates: list[str] | No
     if locator.count() == 0:
         raise RuntimeError(f"Field not found for verification: {field}")
     tag = locator.first.evaluate("(el) => el.tagName.toLowerCase()")
+    input_type = (locator.first.get_attribute("type") or "").lower()
     if tag == "select":
         locator.first.select_option(value)
-    elif tag == "button" or (tag == "input" and locator.first.get_attribute("type") == "button"):
+    elif tag == "button" or (tag == "input" and input_type in {"button", "submit", "image"}):
         locator.first.click()
     else:
         locator.first.fill(value)
@@ -153,6 +170,7 @@ def verify_rule_on_page(
                     experiment_id=experiment.id,
                     passed=False,
                     details="verification budget exhausted (max_experiments)",
+                    inconclusive=True,
                 )
             )
             break
@@ -164,12 +182,17 @@ def verify_rule_on_page(
             if spa_mode and baseline_route and index > 0:
                 soft_return_to_route(page, baseline_route)
                 locator_obs = capture_observation(page, investigation_id, with_screenshot=False)
-            for field, value in experiment.set_fields.items():
+            # Apply setup / condition fields in order; click last if present
+            ordered_items = sorted(
+                experiment.set_fields.items(),
+                key=lambda item: 1 if item[1] == "__click__" else 0,
+            )
+            for field, value in ordered_items:
                 _set_field(
                     page,
                     field,
                     value,
-                    candidates=_candidates_for_field(locator_obs, field),
+                    candidates=_candidates_for_field(locator_obs, field, rule=rule),
                 )
 
             observation = capture_observation(page, investigation_id)

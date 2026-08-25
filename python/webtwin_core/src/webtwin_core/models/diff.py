@@ -166,66 +166,75 @@ def infer_candidate_rules(
             continue
         primary_value_changes.append(change)
 
-    for visibility in visibility_changes:
-        field_name = visibility.field.lower()
-        is_alert = any(token in field_name for token in ("error", "alert", "validation", "warning"))
-        if is_alert and click_fields:
-            continue
-        # Skip newly revealed controls that are themselves buttons (not effect fields)
-        if any(hint in visibility.field.lower() for hint in click_hints):
-            continue
-        for trigger_change in primary_value_changes:
-            trigger = trigger_change.field
-            if trigger == visibility.field:
-                continue
-            trigger_value = after_fields.get(trigger)
-            if trigger_value is None or trigger_value.value in (None, ""):
-                continue
-            effect_field = after_fields.get(visibility.field)
-            rules.append(
-                BusinessRule(
-                    investigation_id=diff.investigation_id,
-                    name=f"{trigger} affects {visibility.field} visibility",
-                    condition=RuleCondition(
-                        field=trigger,
-                        operator="equals",
-                        value=trigger_value.value,
-                    ),
-                    effect=RuleEffect(
-                        field=visibility.field,
-                        visible=True,
-                        required=effect_field.required if effect_field else None,
-                    ),
-                    confidence=0.62 if visibility.attribute == "appeared" else 0.6,
-                    status=RuleStatus.CANDIDATE,
-                )
-            )
+    # One causal trigger per diff — latest value change (not Cartesian product)
+    primary_trigger = primary_value_changes[-1] if primary_value_changes else None
 
-    # Hide rules: value change coincided with a form field disappearing
-    for hidden in hide_changes:
-        for trigger_change in primary_value_changes:
-            trigger = trigger_change.field
-            if trigger == hidden.field:
+    def _setup_fields(*, exclude: set[str]) -> dict[str, str]:
+        setup: dict[str, str] = {}
+        for name, field in after_fields.items():
+            if name in exclude or not _is_form_control(name):
                 continue
-            trigger_value = after_fields.get(trigger)
-            if trigger_value is None or trigger_value.value in (None, ""):
+            if field.value in (None, "") or _looks_like_url(field.value):
                 continue
-            rules.append(
-                BusinessRule(
-                    investigation_id=diff.investigation_id,
-                    name=f"{trigger} hides {hidden.field}",
-                    condition=RuleCondition(
-                        field=trigger,
-                        operator="equals",
-                        value=trigger_value.value,
-                    ),
-                    effect=RuleEffect(field=hidden.field, visible=False),
-                    confidence=0.58,
-                    status=RuleStatus.CANDIDATE,
-                )
-            )
+            setup[name] = str(field.value)
+        return setup
 
-    # Validation / alert / newly revealed fields after click-style interactions
+    if primary_trigger is not None:
+        trigger = primary_trigger.field
+        trigger_value = after_fields.get(trigger)
+        if trigger_value is not None and trigger_value.value not in (None, ""):
+            for visibility in visibility_changes:
+                field_name = visibility.field.lower()
+                if visibility.field == trigger:
+                    continue
+                if any(hint in visibility.field.lower() for hint in click_hints):
+                    continue
+                is_alert = any(
+                    token in field_name for token in ("error", "alert", "validation", "warning")
+                )
+                if is_alert and click_fields:
+                    continue
+                effect_field = after_fields.get(visibility.field)
+                rules.append(
+                    BusinessRule(
+                        investigation_id=diff.investigation_id,
+                        name=f"{trigger} affects {visibility.field} visibility",
+                        condition=RuleCondition(
+                            field=trigger,
+                            operator="equals",
+                            value=trigger_value.value,
+                        ),
+                        effect=RuleEffect(
+                            field=visibility.field,
+                            visible=True,
+                            required=effect_field.required if effect_field else None,
+                        ),
+                        confidence=0.62 if visibility.attribute == "appeared" else 0.6,
+                        status=RuleStatus.CANDIDATE,
+                        setup_fields=_setup_fields(exclude={trigger, visibility.field}),
+                    )
+                )
+
+            for hidden in hide_changes:
+                if hidden.field == trigger:
+                    continue
+                rules.append(
+                    BusinessRule(
+                        investigation_id=diff.investigation_id,
+                        name=f"{trigger} hides {hidden.field}",
+                        condition=RuleCondition(
+                            field=trigger,
+                            operator="equals",
+                            value=trigger_value.value,
+                        ),
+                        effect=RuleEffect(field=hidden.field, visible=False),
+                        confidence=0.58,
+                        status=RuleStatus.CANDIDATE,
+                        setup_fields=_setup_fields(exclude={trigger, hidden.field}),
+                    )
+                )
+
+    # Validation / alert after click-style interactions (DOM-only; no invented network)
     for visibility in visibility_changes:
         field_name = visibility.field.lower()
         is_alert = any(token in field_name for token in ("error", "alert", "validation", "warning"))
@@ -238,14 +247,12 @@ def infer_candidate_rules(
             for rule in rules
         ):
             continue
-        # Require a real click-like control on the page — never invent a phantom "submit"
         if not click_fields:
             continue
         if not primary_value_changes or is_alert or not any(
             rule.effect.field == visibility.field and rule.effect.visible is True for rule in rules
         ):
             for click_field in click_fields:
-                # Skip site-search chrome (q / search boxes appearing across pages)
                 if field_name in {"q", "query", "search", "s"} and not is_alert:
                     continue
                 rules.append(
@@ -256,31 +263,21 @@ def infer_candidate_rules(
                         effect=RuleEffect(field=visibility.field, visible=True),
                         confidence=0.55 if is_alert else 0.5,
                         status=RuleStatus.CANDIDATE,
+                        setup_fields=_setup_fields(exclude={click_field, visibility.field}),
                     )
                 )
                 break
 
-    # Required-field candidates — skip if visibility rule already covers same trigger+field
+    # Required-field candidates — never invent a phantom "submitted" condition
     existing = {
         (rule.condition.field, rule.effect.field)
         for rule in rules
         if rule.effect.visible is True
     }
     for required in required_changes:
-        trigger = primary_value_changes[-1].field if primary_value_changes else None
-        if trigger is None:
-            # Fall back: field became required without a clear trigger — still emit weak candidate
-            rules.append(
-                BusinessRule(
-                    investigation_id=diff.investigation_id,
-                    name=f"{required.field} becomes required",
-                    condition=RuleCondition(field=required.field, operator="equals", value="submitted"),
-                    effect=RuleEffect(field=required.field, required=True),
-                    confidence=0.4,
-                    status=RuleStatus.CANDIDATE,
-                )
-            )
+        if primary_trigger is None:
             continue
+        trigger = primary_trigger.field
         if (trigger, required.field) in existing:
             continue
         trigger_value = after_fields.get(trigger)
@@ -298,21 +295,21 @@ def infer_candidate_rules(
                 effect=RuleEffect(field=required.field, required=True),
                 confidence=0.65,
                 status=RuleStatus.CANDIDATE,
+                setup_fields=_setup_fields(exclude={trigger, required.field}),
             )
         )
 
-    # Disabled / enabled transitions (e.g. submit button)
     enabled_changes = [
         change
         for change in diff.changes
         if change.attribute == "enabled" and change.before is True and change.after is False
     ]
-    for disabled in enabled_changes:
-        field_name = disabled.field.lower()
-        if not any(token in field_name for token in ("submit", "save", "continue", "next", "send")):
-            continue
-        for trigger_change in primary_value_changes:
-            trigger = trigger_change.field
+    if primary_trigger is not None:
+        for disabled in enabled_changes:
+            field_name = disabled.field.lower()
+            if not any(token in field_name for token in ("submit", "save", "continue", "next", "send")):
+                continue
+            trigger = primary_trigger.field
             trigger_value = after_fields.get(trigger)
             if trigger_value is None or trigger_value.value is None:
                 continue

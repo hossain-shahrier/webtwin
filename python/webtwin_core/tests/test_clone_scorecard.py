@@ -71,9 +71,11 @@ def test_clicked_rule_includes_network_expectations() -> None:
         condition=RuleCondition(field="validate", operator="clicked", value=True),
         effect=RuleEffect(field="network_error", visible=True),
     )
+    # DOM-only clicks must not require network by default (L03 validation)
     experiments = generate_verification_experiments(rule)
-    assert len(experiments) == 1
-    assert experiments[0].network_expectations.get("min_events") == 1
+    assert experiments[0].network_expectations == {}
+    with_net = generate_verification_experiments(rule, require_network=True)
+    assert with_net[0].network_expectations.get("min_events") == 1
 
 
 def test_evaluate_network_expectations() -> None:

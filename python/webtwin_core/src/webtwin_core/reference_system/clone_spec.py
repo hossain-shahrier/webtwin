@@ -73,6 +73,9 @@ class CloneRuleSpec(BaseModel):
     effect_visible: bool | None = None
     effect_required: bool | None = None
     effect_enabled: bool | None = None
+    condition_selector: str | None = None
+    effect_selector: str | None = None
+    setup_fields: dict[str, str] = Field(default_factory=dict)
     evidence_ids: list[str] = Field(default_factory=list)
     test_scenario: str = ""
 
@@ -111,9 +114,31 @@ class CloneSpec(BaseModel):
     implementation_rules: list[str] = Field(default_factory=list)
 
 
-def _rule_to_spec(rule: BusinessRule) -> CloneRuleSpec:
+def _selector_for_field(reference: ReferenceSystemContext, field_name: str) -> str | None:
+    for screen in reference.screens:
+        for field in screen.fields:
+            if field.name == field_name and field.selector:
+                return field.selector
+    return None
+
+
+def _rule_to_spec(rule: BusinessRule, reference: ReferenceSystemContext) -> CloneRuleSpec:
+    from webtwin_core.privacy import redact_mapping
+
+    condition_selector = rule.condition_selector or _selector_for_field(
+        reference, rule.condition.field
+    )
+    effect_selector = rule.effect_selector or _selector_for_field(reference, rule.effect.field)
+    setup = redact_mapping(rule.setup_fields)
+    setup_bits = ""
+    if setup:
+        setup_bits = (
+            " after setting "
+            + ", ".join(f"{key}={value!r}" for key, value in setup.items())
+        )
     scenario = (
-        f"Given {rule.condition.field} {rule.condition.operator} {rule.condition.value!r}, "
+        f"Given {rule.condition.field} {rule.condition.operator} {rule.condition.value!r}"
+        f"{setup_bits}, "
         f"expect {rule.effect.field} "
         f"visible={rule.effect.visible} required={rule.effect.required} enabled={rule.effect.enabled}"
     )
@@ -129,6 +154,9 @@ def _rule_to_spec(rule: BusinessRule) -> CloneRuleSpec:
         effect_visible=rule.effect.visible,
         effect_required=rule.effect.required,
         effect_enabled=rule.effect.enabled,
+        condition_selector=condition_selector,
+        effect_selector=effect_selector,
+        setup_fields=setup,
         evidence_ids=[str(eid) for eid in rule.evidence_ids],
         test_scenario=scenario,
     )
@@ -143,9 +171,13 @@ def build_clone_spec(
     exploration_coverage: float = 0.0,
     unknown_fields: list[tuple[str, str]] | None = None,
 ) -> CloneSpec:
-    verified = [_rule_to_spec(rule) for rule in rules if rule.status.value == "verified"]
-    candidates = [_rule_to_spec(rule) for rule in rules if rule.status.value == "candidate"]
-    contradicted = [_rule_to_spec(rule) for rule in rules if rule.status.value == "contradicted"]
+    verified = [_rule_to_spec(rule, reference) for rule in rules if rule.status.value == "verified"]
+    candidates = [
+        _rule_to_spec(rule, reference) for rule in rules if rule.status.value == "candidate"
+    ]
+    contradicted = [
+        _rule_to_spec(rule, reference) for rule in rules if rule.status.value == "contradicted"
+    ]
 
     screens = [
         CloneScreenSpec(

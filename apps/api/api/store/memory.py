@@ -35,6 +35,8 @@ class MemoryStore:
         self.application_catalogs: dict[str, ApplicationCatalog] = {}
         self.discovered_links: dict[UUID, object] = {}
         self.investigation_claims: dict[UUID, str] = {}
+        self.investigation_claim_at: dict[UUID, object] = {}
+        self.audit_events: dict[UUID, object] = {}
         self.auth_form_submissions: dict[UUID, object] = {}
         self.catalog_store = CatalogStore(memory=self.application_catalogs)
         for catalog in self.catalog_store.list_all():
@@ -57,4 +59,6 @@ class MemoryStore:
         self.application_catalogs.clear()
         self.discovered_links.clear()
         self.investigation_claims.clear()
+        self.investigation_claim_at.clear()
+        self.audit_events.clear()
         self.auth_form_submissions.clear()

@@ -29,14 +29,14 @@ WebTwin produces **evidence-backed reference knowledge** — the ground truth la
 
 | Metric | Target | How to measure | Status (MVP closure) |
 |--------|--------|----------------|----------------------|
-| Synthetic L01–L03 rule F1 | ≥ 0.8 | `pnpm nx run evaluation:benchmark` with `WEBTWIN_BENCHMARK_LEVELS=level_01,level_02,level_03` | Met (avg F1 1.0) |
+| Synthetic L01–L03 rule F1 | ≥ 0.8 | `pnpm nx run evaluation:benchmark` with `WEBTWIN_BENCHMARK_LEVELS=level_01,level_02,level_03` | Met (avg F1 1.0; L03 verification accuracy 1.0) |
 | Real auth portal verified rules (focus area) | ≥ 5 | Investigation detail / export | Met on synthetic ATS form fixtures (≥5 verified across L01/L02/L04/L06 + exploration) |
-| Ask refusal without evidence | 100% | `apps/api/tests/test_questions.py` | Met (API refusal tests) |
+| Ask refusal without evidence | 100% | `apps/api/tests/test_questions.py` | Met (API refusal tests; no forged citations) |
 | Catalog survives API restart | Yes | `apps/api/tests/test_catalog_persistence.py` | Met |
-| Export includes selectors + test scenarios | Yes | Clone Spec JSON (`behavior.*.test_scenario`) | Met |
-| Site graph coverage in export | Yes | `site_graph` section + `/site-graph` API; fragment-only `#` anchors excluded from coverage | Met |
+| Export includes selectors + test scenarios | Yes | Clone Spec JSON (`behavior.*.test_scenario`, `condition_selector` / `effect_selector`) | Met |
+| Site graph coverage in export | Yes | `site_graph` section + `/site-graph` API; fragment-only `#` anchors excluded; trailing-slash normalized | Met |
 | Neo4j `LINKS_TO` sync | Yes | Default docker stack + `sync-kg` | Met (wiring) |
-| Clone regression | Fixture tests pass | `tests/evaluation/synthetic_ats/` | Met for L01–L03 discovery F1 |
+| Clone regression | Fixture tests pass | `tests/evaluation/synthetic_ats/` | Met for L01–L03 discovery + verification |
 
 ## Clone scorecard (per investigation)
 

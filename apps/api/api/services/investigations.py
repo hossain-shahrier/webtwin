@@ -397,39 +397,94 @@ def list_investigations() -> list[Investigation]:
     return list(store.investigations.values())
 
 
+_RECLAIMABLE_STATUSES = {
+    InvestigationStatus.INITIALIZING,
+    InvestigationStatus.AUTH_CHECK,
+    InvestigationStatus.AUTH_REQUIRED,
+    InvestigationStatus.EXPLORING,
+    InvestigationStatus.OBSERVING,
+    InvestigationStatus.AUTHENTICATED,
+    InvestigationStatus.GENERATING_RULE,
+    InvestigationStatus.VERIFYING,
+}
+
+
+def _claim_ttl_seconds() -> int:
+    import os
+
+    try:
+        return max(60, int(os.environ.get("WEBTWIN_CLAIM_TTL_SECONDS", "1800")))
+    except ValueError:
+        return 1800
+
+
+def _release_claim(investigation_id: UUID) -> None:
+    claims = getattr(store, "investigation_claims", None)
+    if claims is not None:
+        claims.pop(investigation_id, None)
+    claim_times = getattr(store, "investigation_claim_at", None)
+    if claim_times is not None:
+        claim_times.pop(investigation_id, None)
+
+
+def _set_claim(investigation_id: UUID, worker_id: str) -> None:
+    claims = getattr(store, "investigation_claims", None)
+    if claims is not None:
+        claims[investigation_id] = worker_id
+    claim_times = getattr(store, "investigation_claim_at", None)
+    if claim_times is not None:
+        claim_times[investigation_id] = datetime.now(UTC)
+
+
+def _claim_is_stale(investigation_id: UUID) -> bool:
+    claim_times = getattr(store, "investigation_claim_at", None) or {}
+    stamped = claim_times.get(investigation_id)
+    if stamped is None:
+        # Legacy claim without timestamp — treat as reclaimable
+        return True
+    age = (datetime.now(UTC) - stamped).total_seconds()
+    return age >= _claim_ttl_seconds()
+
+
+def _record_audit(action: str, investigation_id: UUID, **detail) -> None:
+    from webtwin_core.audit import make_audit_event
+
+    events = getattr(store, "audit_events", None)
+    if events is None:
+        return
+    event = make_audit_event(action, investigation_id=investigation_id, **detail)
+    events[event.id] = event
+
+
 def list_pending_investigations() -> list[Investigation]:
     """Investigations waiting for a browser worker (created, orphaned auth, or resumed mid-run)."""
     claims = getattr(store, "investigation_claims", {}) or {}
-    resumable = {
-        InvestigationStatus.EXPLORING,
-        InvestigationStatus.OBSERVING,
-        InvestigationStatus.AUTHENTICATED,
-        InvestigationStatus.GENERATING_RULE,
-        InvestigationStatus.VERIFYING,
-    }
     pending: list[Investigation] = []
     for item in store.investigations.values():
         if item.status == InvestigationStatus.CREATED:
             pending.append(item)
-        elif item.status == InvestigationStatus.AUTH_REQUIRED and not claims.get(item.id):
-            pending.append(item)
-        elif item.status in resumable and not claims.get(item.id):
+            continue
+        if item.status not in _RECLAIMABLE_STATUSES:
+            continue
+        holder = claims.get(item.id)
+        if holder is None or _claim_is_stale(item.id):
             pending.append(item)
     return pending
 
 
 def claim_investigation(investigation_id: UUID) -> Investigation:
-    """Atomically claim a created (or orphaned auth_required) investigation for the worker."""
+    """Atomically claim a created (or orphaned / stale) investigation for the worker."""
     import os
 
     investigation = get_investigation(investigation_id)
-    worker_id = os.environ.get("WEBTWIN_WORKER_ID")
+    worker_id = os.environ.get("WEBTWIN_WORKER_ID") or "local-worker"
     claims = getattr(store, "investigation_claims", None)
-    if claims is not None and worker_id:
+    if claims is not None:
         holder = claims.get(investigation_id)
         if (
             holder
             and holder != worker_id
+            and not _claim_is_stale(investigation_id)
             and investigation.status
             not in {
                 InvestigationStatus.CREATED,
@@ -440,19 +495,15 @@ def claim_investigation(investigation_id: UUID) -> Investigation:
                 status_code=409,
                 detail=f"Investigation already claimed by worker {holder}",
             )
-    if investigation.status == InvestigationStatus.AUTH_REQUIRED:
-        if claims is not None and worker_id:
-            claims[investigation_id] = worker_id
-        return investigation
-    if investigation.status in {
-        InvestigationStatus.EXPLORING,
-        InvestigationStatus.OBSERVING,
-        InvestigationStatus.AUTHENTICATED,
-        InvestigationStatus.GENERATING_RULE,
-        InvestigationStatus.VERIFYING,
-    }:
-        if claims is not None and worker_id:
-            claims[investigation_id] = worker_id
+    if investigation.status in _RECLAIMABLE_STATUSES:
+        if claims is not None:
+            _set_claim(investigation_id, worker_id)
+        _record_audit(
+            "investigation.claimed",
+            investigation_id,
+            status=investigation.status.value,
+            worker_id=worker_id,
+        )
         return investigation
     if investigation.status != InvestigationStatus.CREATED:
         raise HTTPException(status_code=409, detail="Investigation is not claimable")
@@ -460,8 +511,14 @@ def claim_investigation(investigation_id: UUID) -> Investigation:
         investigation_id,
         TransitionRequest(event=TransitionEvent.START, reason="claimed_by_worker"),
     )
-    if claims is not None and worker_id:
-        claims[investigation_id] = worker_id
+    if claims is not None:
+        _set_claim(investigation_id, worker_id)
+    _record_audit(
+        "investigation.claimed",
+        investigation_id,
+        status=claimed.status.value,
+        worker_id=worker_id,
+    )
     return claimed
 
 
@@ -499,7 +556,21 @@ def transition_investigation(investigation_id: UUID, request: TransitionRequest)
     if request.event == TransitionEvent.AUTH_REQUIRED:
         session.human_ready_at = None
         session.auth_verified_at = None
+        # Release claim so another worker (or the same after human login) can resume
+        _release_claim(investigation_id)
     save_session(session)
+
+    _record_audit(
+        "investigation.transition",
+        investigation_id,
+        event=request.event.value,
+        from_status=previous.value,
+        to_status=new_status.value,
+        reason=request.reason,
+    )
+
+    if new_status in {InvestigationStatus.COMPLETED, InvestigationStatus.FAILED}:
+        _release_claim(investigation_id)
 
     if new_status == InvestigationStatus.COMPLETED:
         import logging
@@ -527,9 +598,7 @@ def resume_failed(investigation_id: UUID) -> Investigation:
         raise HTTPException(status_code=409, detail="Only failed investigations can use /resume")
     if investigation.checkpoint is None:
         raise HTTPException(status_code=409, detail="No checkpoint available to resume")
-    claims = getattr(store, "investigation_claims", None)
-    if claims is not None:
-        claims.pop(investigation_id, None)
+    _release_claim(investigation_id)
     return transition_investigation(investigation_id, TransitionRequest(event=TransitionEvent.RESUME))
 
 
@@ -568,6 +637,8 @@ def _clear_investigation_capture(investigation_id: UUID) -> None:
         store.transitions.pop(key, None)
     if hasattr(store, "investigation_claims"):
         store.investigation_claims.pop(investigation_id, None)
+    if hasattr(store, "investigation_claim_at"):
+        store.investigation_claim_at.pop(investigation_id, None)
 
 
 def restart_failed(investigation_id: UUID) -> Investigation:
@@ -1130,7 +1201,14 @@ def ask_question(investigation_id: UUID, question: str):
     investigation = store.investigations[investigation_id]
     rules = list_rules(investigation_id)
     evidence = list_evidence(investigation_id)
-    app_key = application_key_for(investigation)
+    app_key = (
+        investigation.application_key
+        or application_key_for(
+            investigation.target_url,
+            application_name=investigation.application_name,
+            application_key=investigation.application_key,
+        )
+    )
     preferred = query_related_rule_ids(investigation_id, question, application_key=app_key)
     if not preferred:
         preferred = local_related_rule_ids(rules, question)

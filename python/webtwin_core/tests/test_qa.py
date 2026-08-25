@@ -55,6 +55,28 @@ def test_refuse_matched_rule_without_evidence_ids() -> None:
     assert "no linked evidence" in answer.answer.lower()
 
 
+def test_refuse_when_evidence_ids_unresolved() -> None:
+    investigation_id = __import__("uuid").uuid4()
+    orphan = Evidence(
+        investigation_id=investigation_id,
+        type=EvidenceType.DOM,
+        payload={"summary": "unrelated"},
+    )
+    rule = BusinessRule(
+        investigation_id=investigation_id,
+        name="employment_type affects end_date visibility",
+        condition=RuleCondition(field="employment_type", operator="equals", value="contract"),
+        effect=RuleEffect(field="end_date", visible=True),
+        confidence=0.9,
+        status=RuleStatus.VERIFIED,
+        evidence_ids=[__import__("uuid").uuid4()],
+    )
+    answer = answer_from_evidence("Why does end_date appear?", [rule], [orphan])
+    assert answer.refused is True
+    assert "could not be resolved" in answer.answer.lower()
+    assert not any(c.evidence_id == orphan.id for c in answer.citations)
+
+
 def test_candidate_answer_includes_caveat() -> None:
     investigation_id = __import__("uuid").uuid4()
     evidence = Evidence(

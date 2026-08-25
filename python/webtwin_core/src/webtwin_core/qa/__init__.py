@@ -124,10 +124,16 @@ def answer_from_evidence(
     top_score, top_rule = scored[0]
     evidence_ids = list(top_rule.evidence_ids)
     linked_evidence = [item for item in evidence if item.id in evidence_ids][:5]
-    if not linked_evidence and not evidence_ids:
+    if not linked_evidence:
+        # Never forge citations from unrelated evidence blobs
+        reason = (
+            "it has no linked evidence yet"
+            if not evidence_ids
+            else "its evidence ids could not be resolved"
+        )
         return QuestionAnswer(
             answer=(
-                f"Matched rule '{top_rule.name}' but it has no linked evidence yet "
+                f"Matched rule '{top_rule.name}' but {reason} "
                 f"(status={top_rule.status.value}). Refuse to claim without citations."
             ),
             refused=True,
@@ -136,10 +142,7 @@ def answer_from_evidence(
             citations=[_make_citation(top_rule)],
         )
 
-    if not linked_evidence and evidence:
-        linked_evidence = evidence[:1]
-
-    citations = [_make_citation(top_rule, linked_evidence[0] if linked_evidence else None)]
+    citations = [_make_citation(top_rule, linked_evidence[0])]
     for item in linked_evidence[1:]:
         citations.append(_make_citation(top_rule, item))
 

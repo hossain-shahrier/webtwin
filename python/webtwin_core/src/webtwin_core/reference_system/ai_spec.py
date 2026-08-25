@@ -603,9 +603,9 @@ def build_ai_spec(
     max_unknowns: int = 30,
     max_nav_edges: int = 150,
 ) -> AiSpec:
-    verified = [_rule_to_spec(rule) for rule in rules if rule.status.value == "verified"]
+    verified = [_rule_to_spec(rule, reference) for rule in rules if rule.status.value == "verified"]
     candidates = sorted(
-        [_rule_to_spec(rule) for rule in rules if rule.status.value == "candidate"],
+        [_rule_to_spec(rule, reference) for rule in rules if rule.status.value == "candidate"],
         key=lambda rule: (-rule.confidence, rule.name),
     )[:max_candidate_rules]
 

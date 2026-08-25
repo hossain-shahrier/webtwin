@@ -21,6 +21,19 @@ def test_application_key_from_host_and_name() -> None:
     )
 
 
+def test_application_key_for_file_urls_and_guards() -> None:
+    key = application_key_for("file:///tmp/fixtures/level_01/form.html")
+    assert key.startswith("file:")
+    assert "unknown" not in key
+    assert application_key_for("http://127.0.0.1:3000/app") == "localhost"
+    assert application_key_for("http://localhost:8080/x") == "localhost"
+    # Guard against accidental Investigation object passthrough
+    class Fake:
+        target_url = "https://acme.test/jobs"
+
+    assert application_key_for(Fake()) == "acme.test"  # type: ignore[arg-type]
+
+
 def test_normalize_role_scope() -> None:
     assert normalize_role_scope(None) == "default"
     assert normalize_role_scope("Applicant") == "applicant"

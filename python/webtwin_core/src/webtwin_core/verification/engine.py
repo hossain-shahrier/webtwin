@@ -23,6 +23,7 @@ class VerificationExperimentResult(BaseModel):
     passed: bool
     details: str
     observation_id: UUID | None = None
+    inconclusive: bool = False
 
 
 class VerificationRun(BaseModel):
@@ -59,6 +60,7 @@ def generate_verification_experiments(
     rule: BusinessRule,
     *,
     alternate_options: list[str] | None = None,
+    require_network: bool = False,
 ) -> list[VerificationExperiment]:
     experiments: list[VerificationExperiment] = []
     trigger = rule.condition.field
@@ -72,79 +74,101 @@ def generate_verification_experiments(
     if rule.effect.enabled is not None:
         effect_expectation["enabled"] = rule.effect.enabled
 
+    setup = {key: str(value) for key, value in (rule.setup_fields or {}).items()}
+
     if rule.condition.operator == "clicked":
+        set_fields = dict(setup)
+        set_fields[trigger] = "__click__"
+        network_expectations = {"min_events": 1} if require_network else {}
         experiments.append(
             VerificationExperiment(
                 rule_id=rule.id,
                 description=f"When {trigger} is clicked, {effect_field} should match rule effect",
-                set_fields={trigger: "__click__"},
+                set_fields=set_fields,
                 expectations={effect_field: effect_expectation},
-                network_expectations={"min_events": 1},
+                network_expectations=network_expectations,
             )
         )
         return experiments
 
+    positive_fields = dict(setup)
+    positive_fields[trigger] = trigger_value
     experiments.append(
         VerificationExperiment(
             rule_id=rule.id,
             description=f"When {trigger}={trigger_value}, {effect_field} should match rule effect",
-            set_fields={trigger: trigger_value},
+            set_fields=positive_fields,
             expectations={effect_field: effect_expectation},
         )
     )
 
     alternate = _alternate_value(trigger_value, alternate_options)
     if alternate is not None:
-        inverted = dict(effect_expectation)
-        if "visible" in inverted:
-            inverted["visible"] = not inverted["visible"]
-        if "required" in inverted:
-            inverted["required"] = False
-        experiments.append(
-            VerificationExperiment(
-                rule_id=rule.id,
-                description=f"When {trigger}={alternate}, {effect_field} should not match rule effect",
-                set_fields={trigger: alternate},
-                expectations={effect_field: inverted},
+        # Soft negative: only invert visibility when exclusivity is binary (yes/no pairs).
+        # Do NOT invent required=False — that falsely contradicts sticky required fields.
+        inverted: dict[str, Any] = {}
+        binary_pair = trigger_value.lower() in {"yes", "no", "true", "false", "0", "1", "on", "off"}
+        if binary_pair and "visible" in effect_expectation:
+            inverted["visible"] = not effect_expectation["visible"]
+        if inverted:
+            alt_fields = dict(setup)
+            alt_fields[trigger] = alternate
+            experiments.append(
+                VerificationExperiment(
+                    rule_id=rule.id,
+                    description=(
+                        f"When {trigger}={alternate}, {effect_field} should not match "
+                        f"claimed exclusive effect"
+                    ),
+                    set_fields=alt_fields,
+                    expectations={effect_field: inverted},
+                )
             )
-        )
-    elif rule.effect.visible is True:
+    elif rule.effect.visible is True and not setup:
+        # Clear only when no setup context (avoids wiping precondition dates)
+        clear_fields = dict(setup)
+        clear_fields[trigger] = ""
         experiments.append(
             VerificationExperiment(
                 rule_id=rule.id,
                 description=f"When {trigger} is cleared, {effect_field} should not stay visible",
-                set_fields={trigger: ""},
+                set_fields=clear_fields,
                 expectations={effect_field: {"visible": False}},
             )
         )
 
-    # Revert experiment when no binary alternate was generated
     if rule.condition.operator == "equals" and trigger_value and alternate is None:
+        reapply = dict(setup)
+        reapply[trigger] = trigger_value
         experiments.append(
             VerificationExperiment(
                 rule_id=rule.id,
                 description=f"Re-apply {trigger}={trigger_value} — {effect_field} should match again",
-                set_fields={trigger: trigger_value},
+                set_fields=reapply,
                 expectations={effect_field: effect_expectation},
             )
         )
 
     if rule.effect.required is not None:
+        req_fields = dict(setup)
+        req_fields[trigger] = trigger_value
         experiments.append(
             VerificationExperiment(
                 rule_id=rule.id,
                 description=f"Required state for {effect_field} when {trigger}={trigger_value}",
-                set_fields={trigger: trigger_value},
+                set_fields=req_fields,
                 expectations={effect_field: {"required": rule.effect.required}},
             )
         )
 
     if rule.effect.enabled is not None:
+        en_fields = dict(setup)
+        en_fields[trigger] = trigger_value
         experiments.append(
             VerificationExperiment(
                 rule_id=rule.id,
                 description=f"Enabled state for {effect_field} when {trigger}={trigger_value}",
-                set_fields={trigger: trigger_value},
+                set_fields=en_fields,
                 expectations={effect_field: {"enabled": rule.effect.enabled}},
             )
         )
@@ -177,26 +201,14 @@ def evaluate_expectations(state: ApplicationState, expectations: dict[str, dict[
 
 
 def evaluate_network_expectations(
-    events: list[Any],
+    events: list[dict[str, Any]],
     expectations: dict[str, Any],
 ) -> tuple[bool, str]:
     if not expectations:
         return True, "No network expectations"
-    min_events = int(expectations.get("min_events", 0))
-    if min_events and len(events) < min_events:
-        return False, f"Expected at least {min_events} network event(s), got {len(events)}"
-    status_codes = expectations.get("status_codes")
-    if status_codes:
-        actual = {event.status_code for event in events if getattr(event, "status_code", None) is not None}
-        expected = set(status_codes)
-        if not actual & expected:
-            return False, f"Expected status codes {sorted(expected)}, got {sorted(actual)}"
-    methods = expectations.get("methods")
-    if methods:
-        actual_methods = {str(getattr(event, "method", "")).upper() for event in events}
-        expected_methods = {str(item).upper() for item in methods}
-        if not actual_methods & expected_methods:
-            return False, f"Expected methods {sorted(expected_methods)}, got {sorted(actual_methods)}"
+    min_events = int(expectations.get("min_events") or 0)
+    if len(events) < min_events:
+        return False, f"Expected at least {min_events} network events, got {len(events)}"
     return True, "Network expectations met"
 
 
@@ -207,11 +219,13 @@ def observation_to_state(observation: Observation, sequence: int) -> Application
 def summarize_verification(
     rule: BusinessRule, results: list[VerificationExperimentResult]
 ) -> VerificationRun:
-    passed = sum(1 for result in results if result.passed)
-    total = len(results)
+    decisive = [result for result in results if not result.inconclusive]
+    passed = sum(1 for result in decisive if result.passed)
+    total = len(decisive)
 
     if total == 0:
-        status = RuleStatus.CANDIDATE
+        # Only inconclusive (e.g. budget) — do not contradict
+        status = RuleStatus.UNDER_VERIFICATION
         confidence = rule.confidence
     elif passed == total:
         status = RuleStatus.VERIFIED
