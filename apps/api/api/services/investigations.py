@@ -1306,6 +1306,7 @@ def export_cursor_context(investigation_id: UUID) -> dict:
             "## Full exports",
             f"- AI spec JSON: `GET /investigations/{investigation.id}/export/ai-spec`",
             f"- Clone spec JSON: `GET /investigations/{investigation.id}/export/clone-spec`",
+            f"- Prompt capsules: `GET /investigations/{investigation.id}/export/prompt-capsules`",
             f"- Site graph: `GET /investigations/{investigation.id}/site-graph`",
         ]
     )
@@ -1323,6 +1324,7 @@ def export_cursor_context(investigation_id: UUID) -> dict:
         "reference_system": reference.model_dump(mode="json"),
         "clone_spec_url": f"/investigations/{investigation.id}/export/clone-spec",
         "ai_spec_url": f"/investigations/{investigation.id}/export/ai-spec",
+        "prompt_capsules_url": f"/investigations/{investigation.id}/export/prompt-capsules",
         "site_graph_url": f"/investigations/{investigation.id}/site-graph",
     }
 
@@ -1393,6 +1395,57 @@ def export_clone_spec(investigation_id: UUID) -> dict:
         unknown_fields=unknown_fields,
     )
     return spec.model_dump(mode="json")
+
+
+def export_prompt_capsules(investigation_id: UUID) -> dict:
+    from webtwin_core.capsules import build_prompt_capsules, format_capsules_bundle_markdown
+
+    get_investigation(investigation_id)
+    rules = list_rules(investigation_id)
+    evidence = list_evidence(investigation_id)
+    export = build_prompt_capsules(investigation_id, rules, evidence)
+    payload = export.model_dump(mode="json")
+    payload["markdown"] = format_capsules_bundle_markdown(export)
+    return payload
+
+
+def plan_counterfactual_experiment(investigation_id: UUID, body: dict) -> dict:
+    from webtwin_core.counterfactual import CounterfactualRequest, plan_counterfactual
+    from webtwin_core.audit import make_audit_event
+
+    get_investigation(investigation_id)
+    request = CounterfactualRequest.model_validate(body)
+    plan = plan_counterfactual(request, investigation_id=investigation_id)
+    events = getattr(store, "audit_events", None)
+    if events is not None:
+        event = make_audit_event(
+            "counterfactual.planned",
+            investigation_id=investigation_id,
+            condition_field=request.condition_field,
+            condition_value=request.condition_value,
+            effect_field=request.effect_field,
+            plan_id=str(plan.id),
+        )
+        events[event.id] = event
+    pending = getattr(store, "counterfactual_plans", None)
+    if pending is None:
+        store.counterfactual_plans = {}
+        pending = store.counterfactual_plans
+    pending[plan.id] = plan
+    return plan.model_dump(mode="json")
+
+
+def list_absences(investigation_id: UUID) -> dict:
+    from webtwin_core.negative_space import derive_absences_from_rules
+
+    get_investigation(investigation_id)
+    rules = list_rules(investigation_id)
+    absences = derive_absences_from_rules(rules)
+    return {
+        "investigation_id": str(investigation_id),
+        "absences": [item.model_dump(mode="json") for item in absences],
+        "count": len(absences),
+    }
 
 
 def export_application_clone_spec(application_key: str) -> dict:

@@ -233,6 +233,21 @@ def export_clone_spec(investigation_id: UUID) -> dict:
     return svc.export_clone_spec(investigation_id)
 
 
+@router.get("/{investigation_id}/export/prompt-capsules")
+def export_prompt_capsules(investigation_id: UUID) -> dict:
+    return svc.export_prompt_capsules(investigation_id)
+
+
+@router.get("/{investigation_id}/absences")
+def list_absences(investigation_id: UUID) -> dict:
+    return svc.list_absences(investigation_id)
+
+
+@router.post("/{investigation_id}/counterfactual")
+def plan_counterfactual(investigation_id: UUID, body: dict) -> dict:
+    return svc.plan_counterfactual_experiment(investigation_id, body)
+
+
 @router.get("/{investigation_id}/export/cursor")
 def export_cursor_context(investigation_id: UUID) -> dict:
     return svc.export_cursor_context(investigation_id)

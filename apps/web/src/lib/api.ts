@@ -149,6 +149,41 @@ export function exportCloneSpec(id: string): Promise<Record<string, unknown>> {
   return request(`/investigations/${id}/export/clone-spec`);
 }
 
+export function exportPromptCapsules(id: string): Promise<{
+  markdown: string;
+  capsules: unknown[];
+  skipped_without_evidence: string[];
+  guidance: string[];
+}> {
+  return request(`/investigations/${id}/export/prompt-capsules`);
+}
+
+export function listAbsences(id: string): Promise<{
+  absences: unknown[];
+  count: number;
+}> {
+  return request(`/investigations/${id}/absences`);
+}
+
+export function planCounterfactual(
+  id: string,
+  body: {
+    condition_field: string;
+    condition_value: string;
+    effect_field: string;
+    expect_visible?: boolean | null;
+    expect_required?: boolean | null;
+    expect_enabled?: boolean | null;
+    setup_fields?: Record<string, string>;
+    operator?: string;
+  },
+): Promise<Record<string, unknown>> {
+  return request(`/investigations/${id}/counterfactual`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 export function exportAiSpec(id: string): Promise<{
   markdown: string;
   summary: {
@@ -159,6 +194,7 @@ export function exportAiSpec(id: string): Promise<{
     navigation_edge_count?: number;
     verified_rule_count?: number;
     candidate_rule_count?: number;
+    absence_count?: number;
     link_coverage_pct?: number;
   };
   layout?: unknown[];
@@ -168,6 +204,7 @@ export function exportAiSpec(id: string): Promise<{
   navigation: unknown[];
   verified_rules: unknown[];
   candidate_rules: unknown[];
+  absences?: unknown[];
   full_clone_spec_url?: string;
 }> {
   return request(`/investigations/${id}/export/ai-spec`);

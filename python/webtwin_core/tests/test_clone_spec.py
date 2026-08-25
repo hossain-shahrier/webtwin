@@ -70,3 +70,6 @@ def test_build_clone_spec_includes_verified_tiers() -> None:
     assert "user@example.com" not in rule_spec.setup_fields.get("email", "")
     assert spec.site_graph is not None
     assert spec.site_graph.coverage_pct >= 0
+    # Binary exclusivity on country=IT is not derived (non-binary select)
+    assert isinstance(spec.absences, list)
+    assert "Honor absences" in " ".join(spec.implementation_rules)

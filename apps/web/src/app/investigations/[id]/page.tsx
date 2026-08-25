@@ -26,6 +26,7 @@ import {
   exportCursorContext,
   exportCloneSpec,
   exportAiSpec,
+  exportPromptCapsules,
   pinGoldenCatalog,
 } from '../../../lib/api';
 import {
@@ -300,6 +301,36 @@ export default function InvestigationDetailPage() {
             }}
           >
             Export Clone Spec
+          </button>
+          <button
+            type="button"
+            className={styles.btnGhost}
+            style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+            onClick={async () => {
+              try {
+                const payload = await exportPromptCapsules(investigation.id);
+                const filename = exportFilename(investigation.id, 'prompt-capsules', 'md');
+                const result = await copyOrDownloadText({
+                  text: payload.markdown,
+                  filename,
+                  mime: 'text/markdown;charset=utf-8',
+                });
+                setExportNote(
+                  exportResultMessage(
+                    result,
+                    `${payload.capsules.length} prompt capsule(s)`,
+                    filename,
+                  ),
+                );
+              } catch (err) {
+                setExportNote(
+                  err instanceof Error ? err.message : 'Prompt capsule export failed',
+                );
+              }
+            }}
+            title="Evidence-bound Cursor capsules — skips rules without citations"
+          >
+            Export Capsules
           </button>
           {referenceSystem?.application_key && investigation.status === 'completed' && (
             <button

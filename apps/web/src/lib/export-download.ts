@@ -78,7 +78,7 @@ export async function copyOrDownloadText(options: {
 
 export function exportFilename(
   investigationId: string,
-  kind: 'ai-context' | 'cursor-context' | 'clone-spec',
+  kind: 'ai-context' | 'cursor-context' | 'clone-spec' | 'prompt-capsules',
   extension: 'md' | 'json',
 ): string {
   const shortId = investigationId.slice(0, 8);

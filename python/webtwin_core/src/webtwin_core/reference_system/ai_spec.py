@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from webtwin_core.models import BusinessRule, Investigation
 from webtwin_core.reference_system import ReferenceSystemContext, Screen, ScreenField
 from webtwin_core.reference_system.clone_spec import (
+    CloneAbsenceSpec,
     CloneApiHint,
     CloneApplicationSpec,
     CloneFlowSpec,
@@ -196,6 +197,7 @@ class AiSpecSummary(BaseModel):
     navigation_edge_count: int = 0
     verified_rule_count: int = 0
     candidate_rule_count: int = 0
+    absence_count: int = 0
     link_coverage_pct: float = 0.0
     exploration_coverage: float = 0.0
 
@@ -212,6 +214,7 @@ class AiSpec(BaseModel):
     navigation: list[AiNavEdge] = Field(default_factory=list)
     verified_rules: list[CloneRuleSpec] = Field(default_factory=list)
     candidate_rules: list[CloneRuleSpec] = Field(default_factory=list)
+    absences: list[CloneAbsenceSpec] = Field(default_factory=list)
     flows: list[CloneFlowSpec] = Field(default_factory=list)
     api_hints: list[CloneApiHint] = Field(default_factory=list)
     unknowns: list[CloneUnknownSpec] = Field(default_factory=list)
@@ -480,6 +483,7 @@ def format_ai_spec_markdown(
             f"- Link coverage: {round(spec.summary.link_coverage_pct * 100)}%",
             f"- Verified rules: {spec.summary.verified_rule_count}",
             f"- Candidate rules: {spec.summary.candidate_rule_count} (sample below if any)",
+            f"- Absences (assert_never): {spec.summary.absence_count}",
         ]
     )
     if spec.summary.candidate_rule_count > 0 and spec.summary.verified_rule_count == 0:
@@ -562,6 +566,16 @@ def format_ai_spec_markdown(
             f"visible={rule.effect_visible} required={rule.effect_required}"
         )
 
+    lines.extend(["", "## Negative space (assert_never)"])
+    if not spec.absences:
+        lines.append("_No proven absences yet._")
+    for absence in spec.absences:
+        lines.append(
+            f"- when `{absence.condition_field}` {absence.condition_operator} "
+            f"`{absence.condition_value}` → never `{absence.effect_field}."
+            f"{absence.assert_attribute}={not absence.assert_value}`"
+        )
+
     if spec.candidate_rules:
         lines.extend(["", "## Candidate behavior (unverified — hypotheses only)"])
         for rule in spec.candidate_rules[:15]:
@@ -608,6 +622,28 @@ def build_ai_spec(
         [_rule_to_spec(rule, reference) for rule in rules if rule.status.value == "candidate"],
         key=lambda rule: (-rule.confidence, rule.name),
     )[:max_candidate_rules]
+
+    from webtwin_core.negative_space import derive_absences_from_rules
+    from webtwin_core.privacy import redact_mapping
+
+    absences = [
+        CloneAbsenceSpec(
+            id=item.id,
+            condition_field=item.condition_field,
+            condition_operator=item.condition_operator,
+            condition_value=item.condition_value,
+            effect_field=item.effect_field,
+            assert_attribute=item.assert_attribute,
+            assert_value=item.assert_value,
+            source_rule_id=item.source_rule_id,
+            confidence=item.confidence,
+            evidence_ids=item.evidence_ids,
+            rationale=item.rationale,
+            test_scenario=item.test_scenario,
+            setup_fields=redact_mapping(item.setup_fields),
+        )
+        for item in derive_absences_from_rules(rules)
+    ]
 
     routes = [
         AiRouteSpec(
@@ -660,12 +696,14 @@ def build_ai_spec(
         navigation_edge_count=len(navigation),
         verified_rule_count=len(verified),
         candidate_rule_count=sum(1 for rule in rules if rule.status.value == "candidate"),
+        absence_count=len(absences),
         link_coverage_pct=float(stats.get("coverage_pct", 0.0)),
         exploration_coverage=float(reference.exploration_coverage or 0.0),
     )
 
     guidance = [
         "Implement verified rules exactly; treat candidates as hypotheses only.",
+        "Honor negative-space absences (assert_never) — do not invent excluded UI.",
         "Global layout fields appear once — reuse across all pages.",
         "Use route groups for site structure; page-specific interactions for unique forms.",
         "Domain entity names are inferred from form tokens — validate against your OpenAPI/models.",
@@ -691,6 +729,7 @@ def build_ai_spec(
         navigation=navigation,
         verified_rules=verified,
         candidate_rules=candidates,
+        absences=absences,
         flows=[
             CloneFlowSpec(
                 name=flow.name,

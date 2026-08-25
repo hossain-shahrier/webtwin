@@ -112,7 +112,30 @@ def test_export_cursor_context_includes_verified_rules() -> None:
     assert "condition affects reason visibility" in payload["markdown"]
     assert len(payload["verified_rules"]) == 1
     assert payload["ai_spec_url"].endswith("/export/ai-spec")
+    assert "prompt-capsules" in payload["markdown"]
+    assert payload["prompt_capsules_url"].endswith("/export/prompt-capsules")
     assert "Reference system overview" not in payload["markdown"]
+    assert "Negative space" in payload["markdown"]
+
+    capsules = svc.export_prompt_capsules(investigation.id)
+    assert len(capsules["capsules"]) == 1
+    assert "Required evidence" in capsules["markdown"]
+
+    absences = svc.list_absences(investigation.id)
+    assert absences["count"] >= 1
+    assert absences["absences"][0]["condition_value"] == "yes"
+
+    plan = svc.plan_counterfactual_experiment(
+        investigation.id,
+        {
+            "condition_field": "condition",
+            "condition_value": "yes",
+            "effect_field": "reason",
+            "expect_visible": False,
+        },
+    )
+    assert plan["hypothesized_absence"] is True
+    assert plan["status"] == "planned"
 
 
 def test_export_ai_spec_is_compact() -> None:

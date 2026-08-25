@@ -65,6 +65,7 @@ class PostgresStore:
         self.investigation_claims: dict[UUID, str] = {}
         self.investigation_claim_at: dict[UUID, object] = {}
         self.audit_events: dict[UUID, object] = {}
+        self.counterfactual_plans: dict[UUID, object] = {}
         self.auth_form_submissions: dict[UUID, object] = {}
         # Process-local catalog cache + durable catalog store
         self.application_catalogs: dict[str, ApplicationCatalog] = {}
@@ -80,6 +81,7 @@ class PostgresStore:
         self.investigation_claims.clear()
         self.investigation_claim_at.clear()
         self.audit_events.clear()
+        self.counterfactual_plans.clear()
         self.auth_form_submissions.clear()
         with self._session_factory() as session:
             for table in (

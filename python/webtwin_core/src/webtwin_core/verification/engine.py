@@ -16,6 +16,7 @@ class VerificationExperiment(BaseModel):
     set_fields: dict[str, str] = Field(default_factory=dict)
     expectations: dict[str, dict[str, Any]] = Field(default_factory=dict)
     network_expectations: dict[str, Any] = Field(default_factory=dict)
+    kind: str = "positive"  # positive | absence | reapply | attribute
 
 
 class VerificationExperimentResult(BaseModel):
@@ -122,6 +123,7 @@ def generate_verification_experiments(
                     ),
                     set_fields=alt_fields,
                     expectations={effect_field: inverted},
+                    kind="absence",
                 )
             )
     elif rule.effect.visible is True and not setup:
@@ -134,6 +136,7 @@ def generate_verification_experiments(
                 description=f"When {trigger} is cleared, {effect_field} should not stay visible",
                 set_fields=clear_fields,
                 expectations={effect_field: {"visible": False}},
+                kind="absence",
             )
         )
 
@@ -146,6 +149,7 @@ def generate_verification_experiments(
                 description=f"Re-apply {trigger}={trigger_value} — {effect_field} should match again",
                 set_fields=reapply,
                 expectations={effect_field: effect_expectation},
+                kind="reapply",
             )
         )
 
@@ -158,6 +162,7 @@ def generate_verification_experiments(
                 description=f"Required state for {effect_field} when {trigger}={trigger_value}",
                 set_fields=req_fields,
                 expectations={effect_field: {"required": rule.effect.required}},
+                kind="attribute",
             )
         )
 
@@ -170,11 +175,11 @@ def generate_verification_experiments(
                 description=f"Enabled state for {effect_field} when {trigger}={trigger_value}",
                 set_fields=en_fields,
                 expectations={effect_field: {"enabled": rule.effect.enabled}},
+                kind="attribute",
             )
         )
 
     return experiments
-
 
 def _field_from_state(state: ApplicationState, field_name: str) -> FieldState | None:
     for field in state.fields:

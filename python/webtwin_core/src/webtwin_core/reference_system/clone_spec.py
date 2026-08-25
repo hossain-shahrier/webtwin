@@ -80,6 +80,22 @@ class CloneRuleSpec(BaseModel):
     test_scenario: str = ""
 
 
+class CloneAbsenceSpec(BaseModel):
+    id: str
+    condition_field: str
+    condition_operator: str = "equals"
+    condition_value: str | bool | int | float | None = None
+    effect_field: str
+    assert_attribute: str = "visible"
+    assert_value: bool = False
+    source_rule_id: str | None = None
+    confidence: float = 0.0
+    evidence_ids: list[str] = Field(default_factory=list)
+    rationale: str = ""
+    test_scenario: str = ""
+    setup_fields: dict[str, str] = Field(default_factory=dict)
+
+
 class CloneUnknownSpec(BaseModel):
     screen_id: str | None = None
     field: str | None = None
@@ -107,6 +123,7 @@ class CloneSpec(BaseModel):
     navigation: list[CloneNavigationSpec] = Field(default_factory=list)
     flows: list[CloneFlowSpec] = Field(default_factory=list)
     behavior: dict[str, list[CloneRuleSpec]] = Field(default_factory=dict)
+    absences: list[CloneAbsenceSpec] = Field(default_factory=list)
     unknowns: list[CloneUnknownSpec] = Field(default_factory=list)
     api_hints: list[CloneApiHint] = Field(default_factory=list)
     site_graph: CloneSiteGraphSpec | None = None
@@ -171,12 +188,33 @@ def build_clone_spec(
     exploration_coverage: float = 0.0,
     unknown_fields: list[tuple[str, str]] | None = None,
 ) -> CloneSpec:
+    from webtwin_core.negative_space import derive_absences_from_rules
+    from webtwin_core.privacy import redact_mapping
+
     verified = [_rule_to_spec(rule, reference) for rule in rules if rule.status.value == "verified"]
     candidates = [
         _rule_to_spec(rule, reference) for rule in rules if rule.status.value == "candidate"
     ]
     contradicted = [
         _rule_to_spec(rule, reference) for rule in rules if rule.status.value == "contradicted"
+    ]
+    absences = [
+        CloneAbsenceSpec(
+            id=item.id,
+            condition_field=item.condition_field,
+            condition_operator=item.condition_operator,
+            condition_value=item.condition_value,
+            effect_field=item.effect_field,
+            assert_attribute=item.assert_attribute,
+            assert_value=item.assert_value,
+            source_rule_id=item.source_rule_id,
+            confidence=item.confidence,
+            evidence_ids=item.evidence_ids,
+            rationale=item.rationale,
+            test_scenario=item.test_scenario,
+            setup_fields=redact_mapping(item.setup_fields),
+        )
+        for item in derive_absences_from_rules(rules)
     ]
 
     screens = [
@@ -277,12 +315,14 @@ def build_clone_spec(
             "candidate": candidates,
             "contradicted": contradicted,
         },
+        absences=absences,
         unknowns=unknowns,
         api_hints=api_hints,
         site_graph=site_graph,
         exploration_coverage=exploration_coverage,
         implementation_rules=[
             "Implement verified rules exactly; treat candidates as hypotheses only.",
+            "Honor absences (assert_never) — do not invent UI for excluded conditions.",
             "Do not invent API contracts or role permissions not listed in this spec.",
             "Match behavior and field logic, not pixel-perfect visual design.",
             "Refuse or stub behavior marked under unknowns until investigated.",

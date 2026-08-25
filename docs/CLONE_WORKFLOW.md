@@ -53,11 +53,29 @@ Open the investigation → **System** tab:
 
 ## 5. Export clone spec
 
-Use **Export Clone Spec** (JSON) or **Copy for Cursor** (markdown + structured context).
+Use **Export Clone Spec** (JSON), **Export Capsules** (evidence-bound Cursor prompts), or **Copy for Cursor** (markdown + structured context).
 
 Clone Spec includes:
 
 - Screens with selectors, field types, entities
+- Verified / candidate / contradicted behavior tiers
+- **Absences (negative space)** — `assert_never` clauses for exclusive UI
+- `test_scenario` per rule
+- Site graph coverage
+
+Prompt Capsules skip any verified rule without resolvable evidence IDs.
+
+### Counterfactual Form Lab (thin)
+
+Plan a what-if experiment without inventing the outcome:
+
+```bash
+curl -X POST "$API/investigations/$ID/counterfactual" \
+  -H 'content-type: application/json' \
+  -d '{"condition_field":"country","condition_value":"FR","effect_field":"province","expect_visible":false}'
+```
+
+Returns a planned experiment; run it via the browser worker before promoting to verified rules or absences.
 - **`site_graph`** — full adjacency (nodes, edges, coverage, unvisited sample)
 - Navigation and flows
 - Verified / candidate / contradicted behavior tiers
