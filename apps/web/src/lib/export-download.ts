@@ -78,8 +78,8 @@ export async function copyOrDownloadText(options: {
 
 export function exportFilename(
   investigationId: string,
-  kind: 'ai-context' | 'cursor-context' | 'clone-spec' | 'prompt-capsules',
-  extension: 'md' | 'json',
+  kind: 'ai-context' | 'cursor-context' | 'clone-spec' | 'prompt-capsules' | 'contracts' | 'drift',
+  extension: 'md' | 'json' | 'py',
 ): string {
   const shortId = investigationId.slice(0, 8);
   return `webtwin-${kind}-${shortId}.${extension}`;

@@ -1448,6 +1448,117 @@ def list_absences(investigation_id: UUID) -> dict:
     }
 
 
+def export_contract_pack(investigation_id: UUID) -> dict:
+    from webtwin_core.contracts import build_contract_pack
+
+    investigation = get_investigation(investigation_id)
+    rules = list_rules(investigation_id)
+    pack = build_contract_pack(investigation_id, investigation.target_url, rules)
+    return pack.model_dump(mode="json")
+
+
+def get_unknown_hunter_queue(investigation_id: UUID) -> dict:
+    from webtwin_core.hunter import build_probe_queue
+
+    get_investigation(investigation_id)
+    reference = get_reference_system_context(investigation_id)
+    queue = build_probe_queue(str(investigation_id), list(reference.unexplored_fields or []))
+    return queue.model_dump(mode="json")
+
+
+def get_action_tapes(investigation_id: UUID) -> dict:
+    from webtwin_core.wizard import attach_restore_tapes, build_restore_tape_for_rule
+
+    get_investigation(investigation_id)
+    rules = list_rules(investigation_id)
+    events = list_timeline(investigation_id)
+    enriched = attach_restore_tapes(rules, events)
+    # Persist restore tapes on in-memory rules for subsequent verify/export
+    for rule in enriched:
+        store.rules[rule.id] = rule
+    tapes = [
+        build_restore_tape_for_rule(rule, events).model_dump(mode="json")
+        for rule in enriched
+        if rule.status.value in {"candidate", "under_verification", "verified"}
+    ]
+    return {
+        "investigation_id": str(investigation_id),
+        "tapes": tapes,
+        "count": len(tapes),
+    }
+
+
+def compute_investigation_drift(investigation_id: UUID, version: str | None = None) -> dict:
+    from webtwin_core.drift import compute_drift_report, format_drift_markdown
+
+    investigation = get_investigation(investigation_id)
+    app_key = (
+        investigation.application_key
+        or application_key_for(
+            investigation.target_url,
+            application_name=investigation.application_name,
+        )
+    )
+    golden = None
+    try:
+        golden = get_golden_catalog(app_key, version)
+    except HTTPException:
+        golden = None
+    report = compute_drift_report(
+        application_key=app_key,
+        golden=golden,
+        live_rules=list_rules(investigation_id),
+        investigation_id=investigation_id,
+        role_scope=investigation.role_scope,
+    )
+    payload = report.model_dump(mode="json")
+    payload["markdown"] = format_drift_markdown(report)
+    return payload
+
+
+def compute_application_drift(
+    application_key: str,
+    *,
+    investigation_id: UUID | None = None,
+    version: str | None = None,
+) -> dict:
+    from webtwin_core.drift import compute_drift_report, format_drift_markdown
+
+    golden = None
+    try:
+        golden = get_golden_catalog(application_key, version)
+    except HTTPException:
+        golden = None
+    if investigation_id is None:
+        related = list_investigations_for_application(application_key)
+        if not related:
+            raise HTTPException(status_code=404, detail="No investigations for application")
+        investigation_id = related[-1].id
+    report = compute_drift_report(
+        application_key=application_key,
+        golden=golden,
+        live_rules=list_rules(investigation_id),
+        investigation_id=investigation_id,
+    )
+    payload = report.model_dump(mode="json")
+    payload["markdown"] = format_drift_markdown(report)
+    return payload
+
+
+def compute_application_role_diff(
+    application_key: str,
+    left_role: str,
+    right_role: str,
+) -> dict:
+    from webtwin_core.role_diff import compute_role_diff, format_role_diff_markdown
+
+    catalog = get_application_catalog(application_key)
+    spec = compute_role_diff(catalog, left_role, right_role)
+    payload = spec.model_dump(mode="json")
+    payload["markdown"] = format_role_diff_markdown(spec)
+    return payload
+
+
 def export_application_clone_spec(application_key: str) -> dict:
     catalog = get_application_catalog(application_key)
     golden = get_golden_catalog(application_key)

@@ -36,3 +36,6 @@ class BusinessRule(BaseModel):
     effect_selector: str | None = None
     condition_selector_candidates: list[str] = Field(default_factory=list)
     effect_selector_candidates: list[str] = Field(default_factory=list)
+    # Ordered restore steps before verification (wizard causality replay)
+    restore_tape: list[dict[str, str | None]] = Field(default_factory=list)
+    cross_screen: bool = False

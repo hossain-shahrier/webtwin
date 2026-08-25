@@ -76,6 +76,16 @@ curl -X POST "$API/investigations/$ID/counterfactual" \
 ```
 
 Returns a planned experiment; run it via the browser worker before promoting to verified rules or absences.
+
+### Moat exports
+
+| Export | Endpoint | Purpose |
+|--------|----------|---------|
+| Drift Report | `GET /investigations/{id}/drift` | Golden vs live rule freshness |
+| Contracts | `GET /investigations/{id}/export/contracts` | Playwright pytest pack |
+| Unknown Hunter | `GET /investigations/{id}/unknown-hunter` | Prioritized probe queue |
+| Action tapes | `GET /investigations/{id}/action-tapes` | Wizard restore steps for verify |
+| Role Diff | `GET /applications/{key}/role-diff?left=&right=` | Persona behavioral delta |
 - **`site_graph`** — full adjacency (nodes, edges, coverage, unvisited sample)
 - Navigation and flows
 - Verified / candidate / contradicted behavior tiers

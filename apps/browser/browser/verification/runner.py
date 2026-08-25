@@ -141,6 +141,39 @@ def _options_for_field(observation: Observation | None, field: str) -> list[str]
     return []
 
 
+def _apply_restore_tape(page: Page, rule: BusinessRule, locator_obs: Observation | None) -> None:
+    """Replay wizard causality steps before experiments when present."""
+    for step in rule.restore_tape or []:
+        action = (step.get("action") or "").lower()
+        if action == "navigate":
+            url = step.get("url")
+            if url:
+                if str(url).startswith("#") or str(url).startswith("/"):
+                    soft_return_to_route(page, str(url))
+                else:
+                    page.goto(str(url))
+                    settle_after_action(page)
+            continue
+        field = step.get("field")
+        value = step.get("value")
+        if not field:
+            continue
+        if action == "click" or value == "__click__":
+            _set_field(
+                page,
+                str(field),
+                "__click__",
+                candidates=_candidates_for_field(locator_obs, str(field), rule=rule),
+            )
+        else:
+            _set_field(
+                page,
+                str(field),
+                str(value or ""),
+                candidates=_candidates_for_field(locator_obs, str(field), rule=rule),
+            )
+
+
 def verify_rule_on_page(
     page: Page,
     client: ApiClient,
@@ -156,6 +189,12 @@ def verify_rule_on_page(
     if spa_mode and baseline_route:
         soft_return_to_route(page, baseline_route)
     locator_obs = capture_observation(page, investigation_id, with_screenshot=False)
+    try:
+        _apply_restore_tape(page, rule, locator_obs)
+        locator_obs = capture_observation(page, investigation_id, with_screenshot=False)
+    except Exception:
+        # Restore best-effort — experiments may still succeed with setup_fields
+        pass
     alternate_options = _options_for_field(locator_obs, rule.condition.field)
     experiments = generate_verification_experiments(
         rule,
@@ -182,6 +221,11 @@ def verify_rule_on_page(
             if spa_mode and baseline_route and index > 0:
                 soft_return_to_route(page, baseline_route)
                 locator_obs = capture_observation(page, investigation_id, with_screenshot=False)
+                try:
+                    _apply_restore_tape(page, rule, locator_obs)
+                    locator_obs = capture_observation(page, investigation_id, with_screenshot=False)
+                except Exception:
+                    pass
             # Apply setup / condition fields in order; click last if present
             ordered_items = sorted(
                 experiment.set_fields.items(),

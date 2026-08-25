@@ -27,6 +27,8 @@ import {
   exportCloneSpec,
   exportAiSpec,
   exportPromptCapsules,
+  exportContracts,
+  getDriftReport,
   pinGoldenCatalog,
 } from '../../../lib/api';
 import {
@@ -331,6 +333,67 @@ export default function InvestigationDetailPage() {
             title="Evidence-bound Cursor capsules — skips rules without citations"
           >
             Export Capsules
+          </button>
+          <button
+            type="button"
+            className={styles.btnGhost}
+            style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+            onClick={async () => {
+              try {
+                const pack = await exportContracts(investigation.id);
+                const file = pack.files[0];
+                const filename = exportFilename(investigation.id, 'contracts', 'py');
+                const result = await copyOrDownloadText({
+                  text: file?.content || JSON.stringify(pack, null, 2),
+                  filename,
+                  mime: 'text/x-python;charset=utf-8',
+                });
+                setExportNote(
+                  exportResultMessage(
+                    result,
+                    `${pack.rule_count} contract(s)`,
+                    filename,
+                  ),
+                );
+              } catch (err) {
+                setExportNote(
+                  err instanceof Error ? err.message : 'Contract export failed',
+                );
+              }
+            }}
+            title="Executable Playwright pytest contracts from verified rules"
+          >
+            Export Contracts
+          </button>
+          <button
+            type="button"
+            className={styles.btnGhost}
+            style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+            onClick={async () => {
+              try {
+                const report = await getDriftReport(investigation.id, 'v1');
+                const filename = exportFilename(investigation.id, 'drift', 'md');
+                const result = await copyOrDownloadText({
+                  text: report.markdown,
+                  filename,
+                  mime: 'text/markdown;charset=utf-8',
+                });
+                setExportNote(
+                  exportResultMessage(
+                    result,
+                    `Drift report (${Math.round((report.freshness_pct || 0) * 100)}% fresh)`,
+                    filename,
+                  ),
+                );
+              } catch (err) {
+                setExportNote(
+                  err instanceof Error ? err.message : 'Drift report failed',
+                );
+              }
+            }}
+            title="Compare live verified rules against golden pin"
+          >
+            Drift Report
           </button>
           {referenceSystem?.application_key && investigation.status === 'completed' && (
             <button

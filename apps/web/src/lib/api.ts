@@ -158,6 +158,40 @@ export function exportPromptCapsules(id: string): Promise<{
   return request(`/investigations/${id}/export/prompt-capsules`);
 }
 
+export function exportContracts(id: string): Promise<{
+  files: Array<{ path: string; content: string; language?: string }>;
+  rule_count: number;
+  absence_count: number;
+  guidance: string[];
+}> {
+  return request(`/investigations/${id}/export/contracts`);
+}
+
+export function getDriftReport(id: string, version?: string): Promise<{
+  markdown: string;
+  freshness_pct: number;
+  broken: unknown[];
+  missing: unknown[];
+  still_verified: unknown[];
+}> {
+  const query = version ? `?version=${encodeURIComponent(version)}` : '';
+  return request(`/investigations/${id}/drift${query}`);
+}
+
+export function getUnknownHunter(id: string): Promise<{
+  items: unknown[];
+  guidance: string[];
+}> {
+  return request(`/investigations/${id}/unknown-hunter`);
+}
+
+export function getActionTapes(id: string): Promise<{
+  tapes: unknown[];
+  count: number;
+}> {
+  return request(`/investigations/${id}/action-tapes`);
+}
+
 export function listAbsences(id: string): Promise<{
   absences: unknown[];
   count: number;

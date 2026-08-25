@@ -23,6 +23,29 @@ def export_application_clone_spec(application_key: str) -> dict:
     return svc.export_application_clone_spec(application_key)
 
 
+@router.get("/{application_key}/drift")
+def application_drift(
+    application_key: str,
+    investigation_id: str | None = None,
+    version: str | None = None,
+) -> dict:
+    from uuid import UUID
+
+    inv = UUID(investigation_id) if investigation_id else None
+    return svc.compute_application_drift(
+        application_key, investigation_id=inv, version=version
+    )
+
+
+@router.get("/{application_key}/role-diff")
+def application_role_diff(
+    application_key: str,
+    left: str = "applicant",
+    right: str = "recruiter",
+) -> dict:
+    return svc.compute_application_role_diff(application_key, left, right)
+
+
 @router.get("/{application_key}/golden")
 def get_golden(application_key: str, version: str | None = None) -> dict:
     return svc.get_golden_catalog(application_key, version)

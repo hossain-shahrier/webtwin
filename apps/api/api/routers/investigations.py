@@ -238,9 +238,29 @@ def export_prompt_capsules(investigation_id: UUID) -> dict:
     return svc.export_prompt_capsules(investigation_id)
 
 
+@router.get("/{investigation_id}/export/contracts")
+def export_contracts(investigation_id: UUID) -> dict:
+    return svc.export_contract_pack(investigation_id)
+
+
 @router.get("/{investigation_id}/absences")
 def list_absences(investigation_id: UUID) -> dict:
     return svc.list_absences(investigation_id)
+
+
+@router.get("/{investigation_id}/unknown-hunter")
+def unknown_hunter(investigation_id: UUID) -> dict:
+    return svc.get_unknown_hunter_queue(investigation_id)
+
+
+@router.get("/{investigation_id}/action-tapes")
+def action_tapes(investigation_id: UUID) -> dict:
+    return svc.get_action_tapes(investigation_id)
+
+
+@router.get("/{investigation_id}/drift")
+def investigation_drift(investigation_id: UUID, version: str | None = None) -> dict:
+    return svc.compute_investigation_drift(investigation_id, version)
 
 
 @router.post("/{investigation_id}/counterfactual")

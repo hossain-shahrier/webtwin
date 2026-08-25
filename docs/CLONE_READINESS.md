@@ -36,6 +36,11 @@ WebTwin produces **evidence-backed reference knowledge** — the ground truth la
 | Export includes selectors + test scenarios | Yes | Clone Spec JSON (`behavior.*.test_scenario`, `condition_selector` / `effect_selector`) | Met |
 | Negative space (assert_never) in export | Yes | Clone Spec `absences[]` + AI context section | Met (binary exclusivity + hide rules) |
 | Evidence-bound prompt capsules | Yes | `GET .../export/prompt-capsules` (skips rules without evidence) | Met |
+| Drift Twin freshness | Golden vs live | `GET .../drift` + `GET /applications/{key}/drift` | Met |
+| Executable contracts | Verified → pytest | `GET .../export/contracts` | Met |
+| Unknown-Field Hunter | Probe queue | `GET .../unknown-hunter` | Met |
+| Role Diff Twin | Persona delta | `GET /applications/{key}/role-diff` | Met |
+| Wizard causality replay | Restore tapes | `GET .../action-tapes` + verify restore | Met |
 | Site graph coverage in export | Yes | `site_graph` section + `/site-graph` API; fragment-only `#` anchors excluded; trailing-slash normalized | Met |
 | Neo4j `LINKS_TO` sync | Yes | Default docker stack + `sync-kg` | Met (wiring) |
 | Clone regression | Fixture tests pass | `tests/evaluation/synthetic_ats/` | Met for L01–L03 discovery + verification |

@@ -225,6 +225,15 @@ def _run_verification_phase(
         if rule.status.value in {"verified", "contradicted"}:
             verified_rules.append(rule)
             continue
+        # Wizard causality: attach restore tape from timeline when missing
+        try:
+            from webtwin_core.wizard import attach_restore_tapes
+
+            timeline = client.get_timeline(investigation_id)
+            enriched = attach_restore_tapes([rule], timeline or [])
+            rule = enriched[0] if enriched else rule
+        except Exception:
+            pass
         baseline = _locate_rule_context(
             page,
             investigation_id,
