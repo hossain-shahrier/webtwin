@@ -107,7 +107,7 @@ def build_restore_tape_for_rule(
     navigates = [step for step in tape_steps if step.action == "navigate"]
     others = [step for step in tape_steps if step.action != "navigate"]
     ordered = navigates[:1] + others[: max_steps - len(navigates[:1])]
-    cross_screen = any(step.action == "navigate" for step in ordered) or len(ordered) > 1
+    cross_screen = any(step.action == "navigate" for step in ordered)
     return ActionTape(
         investigation_id=str(rule.investigation_id),
         rule_id=str(rule.id),

@@ -1307,6 +1307,8 @@ def export_cursor_context(investigation_id: UUID) -> dict:
             f"- AI spec JSON: `GET /investigations/{investigation.id}/export/ai-spec`",
             f"- Clone spec JSON: `GET /investigations/{investigation.id}/export/clone-spec`",
             f"- Prompt capsules: `GET /investigations/{investigation.id}/export/prompt-capsules`",
+            f"- Contracts: `GET /investigations/{investigation.id}/export/contracts`",
+            f"- Drift report: `GET /investigations/{investigation.id}/drift`",
             f"- Site graph: `GET /investigations/{investigation.id}/site-graph`",
         ]
     )
@@ -1325,6 +1327,8 @@ def export_cursor_context(investigation_id: UUID) -> dict:
         "clone_spec_url": f"/investigations/{investigation.id}/export/clone-spec",
         "ai_spec_url": f"/investigations/{investigation.id}/export/ai-spec",
         "prompt_capsules_url": f"/investigations/{investigation.id}/export/prompt-capsules",
+        "contracts_url": f"/investigations/{investigation.id}/export/contracts",
+        "drift_url": f"/investigations/{investigation.id}/drift",
         "site_graph_url": f"/investigations/{investigation.id}/site-graph",
     }
 
@@ -1473,20 +1477,28 @@ def get_action_tapes(investigation_id: UUID) -> dict:
     rules = list_rules(investigation_id)
     events = list_timeline(investigation_id)
     enriched = attach_restore_tapes(rules, events)
-    # Persist restore tapes on in-memory rules for subsequent verify/export
     for rule in enriched:
         store.rules[rule.id] = rule
-    tapes = [
-        build_restore_tape_for_rule(rule, events).model_dump(mode="json")
-        for rule in enriched
-        if rule.status.value in {"candidate", "under_verification", "verified"}
-    ]
+    tapes = []
+    for rule in enriched:
+        if rule.status.value not in {"candidate", "under_verification", "verified"}:
+            continue
+        if rule.restore_tape:
+            tapes.append(
+                {
+                    "investigation_id": str(investigation_id),
+                    "rule_id": str(rule.id),
+                    "steps": rule.restore_tape,
+                    "cross_screen": rule.cross_screen,
+                }
+            )
+        else:
+            tapes.append(build_restore_tape_for_rule(rule, events).model_dump(mode="json"))
     return {
         "investigation_id": str(investigation_id),
         "tapes": tapes,
         "count": len(tapes),
     }
-
 
 def compute_investigation_drift(investigation_id: UUID, version: str | None = None) -> dict:
     from webtwin_core.drift import compute_drift_report, format_drift_markdown
@@ -1509,7 +1521,9 @@ def compute_investigation_drift(investigation_id: UUID, version: str | None = No
         golden=golden,
         live_rules=list_rules(investigation_id),
         investigation_id=investigation_id,
-        role_scope=investigation.role_scope,
+        role_scope=normalize_role_scope(investigation.role_scope)
+        if investigation.role_scope
+        else None,
     )
     payload = report.model_dump(mode="json")
     payload["markdown"] = format_drift_markdown(report)
@@ -1553,7 +1567,9 @@ def compute_application_role_diff(
     from webtwin_core.role_diff import compute_role_diff, format_role_diff_markdown
 
     catalog = get_application_catalog(application_key)
-    spec = compute_role_diff(catalog, left_role, right_role)
+    left = normalize_role_scope(left_role)
+    right = normalize_role_scope(right_role)
+    spec = compute_role_diff(catalog, left, right)
     payload = spec.model_dump(mode="json")
     payload["markdown"] = format_role_diff_markdown(spec)
     return payload

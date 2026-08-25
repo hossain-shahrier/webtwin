@@ -87,6 +87,8 @@ def test_probe_queue_prioritizes_signal_fields() -> None:
     )
     assert queue.items
     assert queue.items[0].field in {"country", "start_date"}
+    assert queue.items[0].plan is not None
+    assert queue.items[0].plan.experiment.expectations == {}
 
 
 def test_role_diff_exclusive_rules() -> None:

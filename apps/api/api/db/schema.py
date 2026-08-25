@@ -266,6 +266,8 @@ class RuleRow(Base):
     effect_visible: Mapped[bool | None] = mapped_column(Boolean)
     effect_required: Mapped[bool | None] = mapped_column(Boolean)
     effect_enabled: Mapped[bool | None] = mapped_column(Boolean)
+    # setup_fields, selectors, restore_tape, cross_screen, etc.
+    extras: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
 
 class RuleEvidenceRow(Base):

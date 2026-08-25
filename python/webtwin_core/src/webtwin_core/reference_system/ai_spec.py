@@ -572,8 +572,8 @@ def format_ai_spec_markdown(
     for absence in spec.absences:
         lines.append(
             f"- when `{absence.condition_field}` {absence.condition_operator} "
-            f"`{absence.condition_value}` → never `{absence.effect_field}."
-            f"{absence.assert_attribute}={not absence.assert_value}`"
+            f"`{absence.condition_value}` → assert_never "
+            f"`{absence.effect_field}.{absence.assert_attribute}={absence.assert_value}`"
         )
 
     if spec.candidate_rules:

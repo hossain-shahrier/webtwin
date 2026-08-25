@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from webtwin_core.counterfactual import CounterfactualRequest, CounterfactualPlan, plan_counterfactual
+from webtwin_core.counterfactual import CounterfactualPlan, CounterfactualRequest, plan_counterfactual
 
 
 class ProbeItem(BaseModel):
@@ -40,10 +40,11 @@ _HIGH_SIGNAL = (
 
 
 def _parse_unknown(item: str) -> tuple[str | None, str]:
-    if ":" in item:
-        screen, field = item.split(":", 1)
-        return screen or None, field
-    return None, item
+    raw = (item or "").strip()
+    if ":" in raw:
+        screen, field = raw.split(":", 1)
+        return (screen.strip() or None), field.strip()
+    return None, raw
 
 
 def _priority(field: str) -> float:
@@ -55,6 +56,17 @@ def _priority(field: str) -> float:
     if lowered.startswith(("btn", "nav", "menu", "footer", "header")):
         score -= 0.3
     return round(max(0.05, min(score, 1.0)), 2)
+
+
+def _suggested_values(field: str) -> list[str]:
+    lowered = field.lower()
+    if any(token in lowered for token in ("date", "dob")):
+        return ["2024-01-01", "2020-06-15", ""]
+    if any(token in lowered for token in ("country", "state", "province", "type", "status")):
+        return ["IT", "FR", "US", ""]
+    if any(token in lowered for token in ("yes", "consent", "agree", "check")):
+        return ["yes", "no", ""]
+    return ["1", "yes", "test", ""]
 
 
 def build_probe_queue(
@@ -69,15 +81,20 @@ def build_probe_queue(
         if not field:
             continue
         priority = _priority(field)
-        suggestions = ["", "1", "yes", "test"]
-        # Plan a visibility probe (observe whether anything appears — hypothesis only)
+        suggestions = _suggested_values(field)
+        # Probe the field itself with a benign value; effect is observe-only via
+        # a sibling "probe_signal" expectation placeholder (worker records DOM delta).
         plan = plan_counterfactual(
             CounterfactualRequest(
                 condition_field=field,
-                condition_value="yes",
-                effect_field=field,
-                expect_visible=True,
+                condition_value=suggestions[0] if suggestions else "1",
+                effect_field="__observe__",
+                observe_only=True,
             )
+        )
+        plan.description = (
+            f"Probe unknown field {field!r} on {screen_id or 'current screen'} "
+            f"with value {suggestions[0]!r}; record DOM/network delta only."
         )
         items.append(
             ProbeItem(

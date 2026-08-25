@@ -439,6 +439,15 @@ def rule_to_row(model: BusinessRule) -> RuleRow:
         effect_visible=model.effect.visible,
         effect_required=model.effect.required,
         effect_enabled=model.effect.enabled,
+        extras={
+            "setup_fields": model.setup_fields or {},
+            "condition_selector": model.condition_selector,
+            "effect_selector": model.effect_selector,
+            "condition_selector_candidates": model.condition_selector_candidates or [],
+            "effect_selector_candidates": model.effect_selector_candidates or [],
+            "restore_tape": model.restore_tape or [],
+            "cross_screen": model.cross_screen,
+        },
     )
 
 
@@ -447,6 +456,7 @@ def rule_from_row(
     evidence_ids: list[UUID] | None = None,
     verification_run_ids: list[UUID] | None = None,
 ) -> BusinessRule:
+    extras = getattr(row, "extras", None) or {}
     return BusinessRule(
         id=row.id,
         investigation_id=row.investigation_id,
@@ -467,6 +477,13 @@ def rule_from_row(
         ),
         evidence_ids=evidence_ids or [],
         verification_run_ids=verification_run_ids or [],
+        setup_fields=dict(extras.get("setup_fields") or {}),
+        condition_selector=extras.get("condition_selector"),
+        effect_selector=extras.get("effect_selector"),
+        condition_selector_candidates=list(extras.get("condition_selector_candidates") or []),
+        effect_selector_candidates=list(extras.get("effect_selector_candidates") or []),
+        restore_tape=list(extras.get("restore_tape") or []),
+        cross_screen=bool(extras.get("cross_screen") or False),
     )
 
 

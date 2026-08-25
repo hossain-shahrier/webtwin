@@ -371,7 +371,12 @@ export default function InvestigationDetailPage() {
             style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
             onClick={async () => {
               try {
-                const report = await getDriftReport(investigation.id, 'v1');
+                let report;
+                try {
+                  report = await getDriftReport(investigation.id, 'v1');
+                } catch {
+                  report = await getDriftReport(investigation.id);
+                }
                 const filename = exportFilename(investigation.id, 'drift', 'md');
                 const result = await copyOrDownloadText({
                   text: report.markdown,
@@ -391,7 +396,7 @@ export default function InvestigationDetailPage() {
                 );
               }
             }}
-            title="Compare live verified rules against golden pin"
+            title="Compare live verified rules against golden pin (latest if v1 missing)"
           >
             Drift Report
           </button>

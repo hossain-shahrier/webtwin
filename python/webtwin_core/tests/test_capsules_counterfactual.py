@@ -51,3 +51,16 @@ def test_plan_counterfactual_marks_absence_hypothesis() -> None:
     assert plan.experiment.set_fields["country"] == "FR"
     assert plan.experiment.expectations["province"]["visible"] is False
     assert plan.status == "planned"
+
+
+def test_observe_only_probe_has_empty_expectations() -> None:
+    plan = plan_counterfactual(
+        CounterfactualRequest(
+            condition_field="country",
+            condition_value="IT",
+            effect_field="__observe__",
+            observe_only=True,
+        )
+    )
+    assert plan.experiment.expectations == {}
+    assert plan.hypothesized_absence is False

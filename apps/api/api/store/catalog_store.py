@@ -22,12 +22,24 @@ class CatalogStore:
         self._file_dir = Path.home() / ".webtwin" / "catalogs"
         self._file_dir.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def _safe_key(application_key: str) -> str:
+        """Filesystem-safe key (colons break some OSes / tools)."""
+        return (application_key or "app").replace(":", "__").replace("/", "_")
+
     def get(self, application_key: str) -> ApplicationCatalog | None:
         if application_key in self._memory:
             return self._memory[application_key]
-        file_path = self._file_dir / f"{application_key}.json"
+        file_path = self._file_dir / f"{self._safe_key(application_key)}.json"
         if file_path.exists():
             data = json.loads(file_path.read_text())
+            catalog = ApplicationCatalog.model_validate(data)
+            self._memory[application_key] = catalog
+            return catalog
+        # Legacy unsanitized filenames
+        legacy = self._file_dir / f"{application_key}.json"
+        if legacy.exists():
+            data = json.loads(legacy.read_text())
             catalog = ApplicationCatalog.model_validate(data)
             self._memory[application_key] = catalog
             return catalog
@@ -77,7 +89,7 @@ class CatalogStore:
     def save(self, catalog: ApplicationCatalog) -> ApplicationCatalog:
         catalog.updated_at = datetime.now(UTC)
         self._memory[catalog.application_key] = catalog
-        file_path = self._file_dir / f"{catalog.application_key}.json"
+        file_path = self._file_dir / f"{self._safe_key(catalog.application_key)}.json"
         file_path.write_text(catalog.model_dump_json())
         if self._session_factory is not None:
             from api.db.schema import ApplicationCatalogRow
@@ -106,7 +118,9 @@ class CatalogStore:
             "pinned_at": datetime.now(UTC).isoformat(),
             "catalog": snapshot,
         }
-        golden_path = self._file_dir / f"golden_{application_key}@{version}.json"
+        golden_path = (
+            self._file_dir / f"golden_{self._safe_key(application_key)}@{version}.json"
+        )
         golden_path.write_text(json.dumps(record, default=str))
         if self._session_factory is not None:
             from api.db.schema import ApplicationCatalogRow
@@ -142,11 +156,13 @@ class CatalogStore:
                             "version": row.golden_version,
                             "catalog": row.golden_payload,
                         }
-        pattern = f"golden_{application_key}@"
+        safe = self._safe_key(application_key)
         for path in self._file_dir.glob("golden_*.json"):
-            if application_key not in path.name:
+            if safe not in path.name and application_key not in path.name:
                 continue
             data = json.loads(path.read_text())
+            if data.get("application_key") not in {None, application_key}:
+                continue
             if version is None or data.get("version") == version:
                 return data
         return None

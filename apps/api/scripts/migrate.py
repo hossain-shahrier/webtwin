@@ -57,6 +57,7 @@ def main() -> None:
         "ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS soft_nav_success_rate DOUBLE PRECISION",
         "ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS routes_seen INTEGER DEFAULT 0",
         "ALTER TABLE network_events ADD COLUMN IF NOT EXISTS route_path TEXT",
+        "ALTER TABLE rules ADD COLUMN IF NOT EXISTS extras JSONB DEFAULT '{}'::jsonb",
     ]
     with engine.begin() as connection:
         for statement in statements:
