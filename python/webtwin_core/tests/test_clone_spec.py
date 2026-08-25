@@ -58,5 +58,8 @@ def test_build_clone_spec_includes_verified_tiers() -> None:
     assert spec.behavior["verified"]
     assert spec.screens[0].fields[0].name == "country"
     assert spec.implementation_rules
+    rule_spec = spec.behavior["verified"][0]
+    assert rule_spec.test_scenario
+    assert "country" in rule_spec.test_scenario
     assert spec.site_graph is not None
     assert spec.site_graph.coverage_pct >= 0

@@ -81,24 +81,46 @@ def infer_candidate_rules(
 
     def _is_nav_chrome(name: str) -> bool:
         lowered = name.lower()
+        # Substring "nav"/"menu" is too broad (matches "unavailable", etc.)
+        nav_tokens = (
+            lowered.startswith("nav_")
+            or lowered.endswith("_nav")
+            or "_nav_" in lowered
+            or lowered in {"navbar", "navigation", "main_nav", "main_menu", "main_menu_toggle"}
+            or lowered.startswith("menu_")
+            or lowered.endswith("_menu")
+            or lowered.endswith("_menu_toggle")
+        )
         return (
-            lowered.startswith("a[href")
+            lowered == "a"
+            or lowered.startswith("a[")
             or "href=" in lowered
-            or lowered in {"q", "query", "search", "s"}
-            or "menu" in lowered
-            or "nav" in lowered
-            or lowered in {"account_icon_link", "gorur_ghash"}
+            or lowered.startswith("visit_")
+            or lowered.endswith("_icon_link")
+            or lowered.endswith("_nav_link")
+            or lowered in {"q", "query", "search", "s", "account_icon_link", "gorur_ghash"}
+            or nav_tokens
             or lowered.startswith("_wp_")
             or lowered.startswith("wc_order_attribution")
             or "nonce" in lowered
         )
 
+    def _looks_like_url(value: Any) -> bool:
+        if not isinstance(value, str):
+            return False
+        text = value.strip().lower()
+        if text.startswith(("http://", "https://", "mailto:", "tel:")):
+            return True
+        # Absolute site paths used as nav action payloads (not form values)
+        if text.startswith("/") and len(text) > 1 and " " not in text:
+            return True
+        return False
+
     def _is_form_control(name: str) -> bool:
-        lowered = name.lower()
         if _is_nav_chrome(name):
             return False
         # Prefer named inputs/selects over raw anchors
-        return not lowered.startswith("a[")
+        return not name.lower().startswith("a[")
 
     value_changes = [
         change for change in diff.changes if change.attribute == "value" and change.before != change.after
@@ -135,9 +157,14 @@ def infer_candidate_rules(
         for name in after_fields
         if any(hint in name.lower() for hint in click_hints) and _is_form_control(name)
     ]
-    primary_value_changes = [
-        change for change in value_changes if _is_form_control(change.field)
-    ]
+    primary_value_changes = []
+    for change in value_changes:
+        if not _is_form_control(change.field):
+            continue
+        after_field = after_fields.get(change.field)
+        if after_field is not None and _looks_like_url(after_field.value):
+            continue
+        primary_value_changes.append(change)
 
     for visibility in visibility_changes:
         field_name = visibility.field.lower()

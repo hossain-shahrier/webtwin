@@ -35,7 +35,16 @@ class VerificationRun(BaseModel):
 
 
 def _alternate_value(value: str) -> str | None:
-    pairs = {"yes": "no", "no": "yes", "true": "false", "false": "true"}
+    pairs = {
+        "yes": "no",
+        "no": "yes",
+        "true": "false",
+        "false": "true",
+        "1": "0",
+        "0": "1",
+        "on": "off",
+        "off": "on",
+    }
     lowered = value.lower()
     return pairs.get(lowered)
 

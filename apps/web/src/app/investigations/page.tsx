@@ -22,7 +22,7 @@ export default function InvestigationsPage() {
   const [featureScope, setFeatureScope] = useState('');
   const [roleScope, setRoleScope] = useState('');
   const [applicationName, setApplicationName] = useState('');
-  const [policy, setPolicy] = useState('site_map');
+  const [policy, setPolicy] = useState('information_gain');
   const [investigationScope, setInvestigationScope] = useState('full_site');
   const [urlPrefix, setUrlPrefix] = useState('');
   const [spaMode, setSpaMode] = useState(false);
@@ -165,10 +165,10 @@ export default function InvestigationsPage() {
                   value={policy}
                   onChange={(event) => setPolicy(event.target.value)}
                 >
-                  <option value="site_map">Site map (deep crawl)</option>
                   <option value="information_gain">
                     Form / behavior (information gain)
                   </option>
+                  <option value="site_map">Site map (deep crawl)</option>
                   <option value="first_unexplored">First unexplored</option>
                   <option value="random">Random</option>
                 </select>

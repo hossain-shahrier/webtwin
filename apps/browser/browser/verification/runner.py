@@ -1,6 +1,7 @@
 from playwright.sync_api import Page
 from webtwin_core.exploration.budget import ExplorationBudget
 from webtwin_core.models import BusinessRule
+from webtwin_core.models.observation import Observation
 from webtwin_core.verification.engine import (
     VerificationExperimentResult,
     evaluate_expectations,
@@ -15,12 +16,39 @@ from browser.observer.settle import settle_after_action
 from browser.observer.snapshot import capture_observation
 
 
+def _candidates_for_field(observation: Observation | None, field: str) -> list[str]:
+    """Prefer observation selectors/stable_key candidates over name-only heuristics."""
+    if observation is None:
+        return []
+    candidates: list[str] = []
+    for element in observation.elements:
+        keys = {
+            element.stable_key,
+            element.name,
+            element.selector,
+            (element.selector or "").lstrip("#"),
+        }
+        if field not in keys:
+            continue
+        if element.selector:
+            candidates.append(element.selector)
+        for item in element.selector_candidates or []:
+            if item:
+                candidates.append(item)
+        if element.testid:
+            candidates.append(f'[data-testid="{element.testid}"]')
+        if element.name:
+            candidates.append(f'[name="{element.name}"]')
+        break
+    return candidates
+
+
 def _resolve_locator(page: Page, field: str, candidates: list[str] | None = None):
     selectors = list(candidates or [])
     selectors.extend(
         [
             f'[data-testid="{field}"]',
-            f'#{field}',
+            f"#{field}",
             f'[name="{field}"]',
             f'[aria-label="{field}"]',
         ]
@@ -61,10 +89,16 @@ def soft_return_to_route(page: Page, route_path: str) -> None:
     """Return to a SPA route via hash/History click when possible; fall back to hash assign."""
     if not route_path:
         return
-    link = page.locator(f'a[href="{route_path}"], a[href="#{route_path.lstrip("#")}"], [data-testid="nav-{route_path.strip("/#")}"]')
+    link = page.locator(
+        f'a[href="{route_path}"], a[href="#{route_path.lstrip("#")}"], '
+        f'[data-testid="nav-{route_path.strip("/#")}"]'
+    )
     if link.count() > 0:
         link.first.click()
-        settle_after_action(page, expect_url_contains=route_path.lstrip("#")[:24] if route_path else None)
+        settle_after_action(
+            page,
+            expect_url_contains=route_path.lstrip("#")[:24] if route_path else None,
+        )
         return
     if route_path.startswith("#") or route_path.startswith("/"):
         hash_target = route_path if route_path.startswith("#") else f"#{route_path.lstrip('/')}"
@@ -107,8 +141,15 @@ def verify_rule_on_page(
         try:
             if spa_mode and baseline_route:
                 soft_return_to_route(page, baseline_route)
+            # Capture current DOM so we can resolve stable_key → real selectors
+            locator_obs = capture_observation(page, investigation_id, with_screenshot=False)
             for field, value in experiment.set_fields.items():
-                _set_field(page, field, value)
+                _set_field(
+                    page,
+                    field,
+                    value,
+                    candidates=_candidates_for_field(locator_obs, field),
+                )
 
             observation = capture_observation(page, investigation_id)
             client.record_observation(observation)

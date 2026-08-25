@@ -211,3 +211,84 @@ def test_screen_visited_treats_hearing_tokens_as_one_pattern():
         "/forms/hearing/differentToken123456789012345678901234"
     )
     assert not state._screen_visited("/company-management/details/207")
+
+
+def test_extract_skips_fragment_only_hrefs():
+    obs = _observation(
+        url="https://shop.example/",
+        path="/",
+        links=[
+            ("#", "Top"),
+            ("#content", "Skip to content"),
+            ("/about/", "About"),
+            ("/product-category/men/", "Men"),
+        ],
+    )
+    links = extract_discovered_links(obs, origin_url=obs.url)
+    hrefs = {link.href for link in links}
+    assert "#" not in hrefs
+    assert "#content" not in hrefs
+    assert hrefs == {"/about/", "/product-category/men/"}
+
+
+def test_extract_keeps_spa_hash_routes():
+    obs = _observation(
+        url="https://app.example/",
+        path="/",
+        links=[
+            ("#/dashboard", "Dashboard"),
+            ("#!/jobs", "Jobs"),
+            ("#content", "Skip"),
+        ],
+    )
+    links = extract_discovered_links(obs, origin_url=obs.url)
+    hrefs = {link.href for link in links}
+    assert "#/dashboard" in hrefs
+    assert "#!/jobs" in hrefs
+    assert "#content" not in hrefs
+
+
+def test_coverage_excludes_fragment_and_route_links():
+    from webtwin_core.reference_system.site_graph import DiscoveredLink
+
+    investigation_id = uuid4()
+    links = [
+        DiscoveredLink(
+            investigation_id=investigation_id,
+            from_screen_id="/",
+            to_screen_id="/#content",
+            href="#content",
+            link_type=LinkType.ROUTE,
+        ),
+        DiscoveredLink(
+            investigation_id=investigation_id,
+            from_screen_id="/",
+            to_screen_id="/about/",
+            href="/about/",
+            link_type=LinkType.NAVIGATE,
+            visited=True,
+        ),
+        DiscoveredLink(
+            investigation_id=investigation_id,
+            from_screen_id="/",
+            to_screen_id="/product/shirt/",
+            href="/product/shirt/",
+            link_type=LinkType.NAVIGATE,
+            visited=False,
+        ),
+        DiscoveredLink(
+            investigation_id=investigation_id,
+            from_screen_id="/about/",
+            to_screen_id="/about/#section",
+            href="/about/#section",
+            link_type=LinkType.NAVIGATE,
+        ),
+    ]
+    screens = [
+        Screen(id="/", name="Home", url="https://shop.example/", path="/"),
+        Screen(id="/about/", name="About", url="https://shop.example/about/", path="/about/"),
+    ]
+    stats = compute_site_graph_stats(links, screens, origin_url="https://shop.example/")
+    assert stats.total_internal == 2
+    assert stats.coverage_pct == 0.5
+    assert all("#" not in sample for sample in stats.unvisited_sample)

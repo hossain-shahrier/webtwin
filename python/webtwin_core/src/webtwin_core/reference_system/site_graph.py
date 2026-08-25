@@ -153,24 +153,27 @@ class SiteGraph(BaseModel):
     stats: SiteGraphStats = Field(default_factory=SiteGraphStats)
 
 
-_SKIP_HREF_TOKENS = (
-    "mailto:",
-    "tel:",
-    "javascript:",
-    "/login",
-    "/signin",
-    "/sign-in",
-    "/logout",
-    "idp.",
-    "sso.",
-    ".pdf",
-    ".zip",
-    ".doc",
-)
+def _is_fragment_only_href(href: str) -> bool:
+    """True for same-page anchors (#, #content) — not crawlable screens.
+
+    SPA hash routes (#/dashboard, #!/app) are crawlable and must NOT be skipped.
+    """
+    stripped = (href or "").strip()
+    if not stripped or stripped == "#":
+        return True
+    if not stripped.startswith("#"):
+        return False
+    rest = stripped[1:]
+    # Hash router / hashbang SPA paths
+    if rest.startswith("/") or rest.startswith("!/"):
+        return False
+    return True
 
 
 def _should_skip_href(href: str) -> bool:
     lowered = href.lower().strip()
+    if _is_fragment_only_href(href):
+        return True
     if lowered.startswith(("mailto:", "tel:", "javascript:")):
         return True
     if lowered.endswith((".pdf", ".zip", ".doc")):
@@ -330,13 +333,32 @@ def mark_links_visited(
     return links
 
 
+def _is_crawlable_internal(link: DiscoveredLink) -> bool:
+    """Exclude external, fragment-only, and same-page ROUTE anchors from coverage."""
+    if link.link_type == LinkType.EXTERNAL:
+        return False
+    if not link.to_screen_id:
+        return False
+    if link.link_type == LinkType.ROUTE:
+        return False
+    if _is_fragment_only_href(link.href):
+        return False
+    # Same-page fragment targets (/about → /about/#content) inflate the denominator
+    if "#" in (link.to_screen_id or ""):
+        from_base = link.from_screen_id.split("#", 1)[0].rstrip("/") or "/"
+        to_base = link.to_screen_id.split("#", 1)[0].rstrip("/") or "/"
+        if from_base == to_base:
+            return False
+    return True
+
+
 def compute_site_graph_stats(
     links: list[DiscoveredLink],
     screens: list["Screen"],
     *,
     origin_url: str,
 ) -> SiteGraphStats:
-    internal = [link for link in links if link.link_type != LinkType.EXTERNAL and link.to_screen_id]
+    internal = [link for link in links if _is_crawlable_internal(link)]
     visited_internal = [link for link in internal if link.visited]
     unique_targets = {link.to_screen_id for link in internal if link.to_screen_id}
     visited_targets = {
