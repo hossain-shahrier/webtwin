@@ -10,6 +10,40 @@ from webtwin_core.models.common import KnowledgeKind
 from webtwin_core.qa.models import AnswerCitation, QuestionAnswer
 
 
+def _citation_extras(evidence_item: Evidence | None) -> dict[str, str | None]:
+    if evidence_item is None:
+        return {"evidence_summary": None, "screen_path": None}
+    payload = evidence_item.payload or {}
+    summary = payload.get("summary") or payload.get("description")
+    if isinstance(summary, str):
+        summary = summary[:160]
+    else:
+        summary = None
+    screen_path = payload.get("screen_id") or payload.get("path") or payload.get("url")
+    if isinstance(screen_path, str) and screen_path.startswith("http"):
+        from urllib.parse import urlparse
+
+        screen_path = urlparse(screen_path).path or screen_path
+    if not isinstance(screen_path, str):
+        screen_path = None
+    return {"evidence_summary": summary, "screen_path": screen_path}
+
+
+def _make_citation(
+    rule: BusinessRule,
+    evidence_item: Evidence | None = None,
+) -> AnswerCitation:
+    extras = _citation_extras(evidence_item)
+    return AnswerCitation(
+        rule_id=rule.id,
+        evidence_id=evidence_item.id if evidence_item else None,
+        confidence=rule.confidence,
+        label=rule.name,
+        evidence_summary=extras["evidence_summary"],
+        screen_path=extras["screen_path"],
+    )
+
+
 def answer_from_evidence(
     question: str,
     rules: list[BusinessRule],
@@ -26,14 +60,7 @@ def answer_from_evidence(
                 continue
             linked_evidence = [item for item in evidence if item.id in rule.evidence_ids][:5]
             if rule.status.value == "verified" and linked_evidence:
-                citations = [
-                    AnswerCitation(
-                        rule_id=rule.id,
-                        evidence_id=linked_evidence[0].id,
-                        confidence=rule.confidence,
-                        label=rule.name,
-                    )
-                ]
+                citations = [_make_citation(rule, linked_evidence[0])]
                 visible = rule.effect.visible
                 if visible:
                     answer = (
@@ -80,9 +107,9 @@ def answer_from_evidence(
             score += 0.5
         if str(rule.id) in preferred:
             score += 2.5
-        if overlap > 0 or str(rule.id) in preferred or any(
-            token in haystack for token in ("end", "date", "appear", "visible", "show", "why")
-        ):
+        # Require lexical overlap with the rule (or an explicit preferred id).
+        # Do not admit every rule for generic question words like "why" / "appear".
+        if overlap > 0 or str(rule.id) in preferred:
             scored.append((score, rule))
 
     scored.sort(key=lambda item: item[0], reverse=True)
@@ -106,30 +133,15 @@ def answer_from_evidence(
             refused=True,
             knowledge_kind=KnowledgeKind.UNKNOWN,
             confidence=0.0,
-            citations=[
-                AnswerCitation(
-                    rule_id=top_rule.id,
-                    confidence=top_rule.confidence,
-                    label=top_rule.name,
-                )
-            ],
+            citations=[_make_citation(top_rule)],
         )
 
     if not linked_evidence and evidence:
         linked_evidence = evidence[:1]
 
-    citations = [
-        AnswerCitation(
-            rule_id=top_rule.id,
-            evidence_id=linked_evidence[0].id if linked_evidence else None,
-            confidence=top_rule.confidence,
-            label=top_rule.name,
-        )
-    ]
+    citations = [_make_citation(top_rule, linked_evidence[0] if linked_evidence else None)]
     for item in linked_evidence[1:]:
-        citations.append(
-            AnswerCitation(rule_id=top_rule.id, evidence_id=item.id, confidence=top_rule.confidence)
-        )
+        citations.append(_make_citation(top_rule, item))
 
     status = top_rule.status.value
     visible = top_rule.effect.visible

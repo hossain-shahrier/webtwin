@@ -109,6 +109,21 @@ def soft_return_to_route(page: Page, route_path: str) -> None:
     settle_after_action(page)
 
 
+def _options_for_field(observation: Observation | None, field: str) -> list[str]:
+    if observation is None:
+        return []
+    for element in observation.elements:
+        keys = {
+            element.stable_key,
+            element.name,
+            element.selector,
+            (element.selector or "").lstrip("#"),
+        }
+        if field in keys and element.options:
+            return list(element.options)
+    return []
+
+
 def verify_rule_on_page(
     page: Page,
     client: ApiClient,
@@ -121,7 +136,14 @@ def verify_rule_on_page(
     budget: ExplorationBudget | None = None,
     network: NetworkCollector | None = None,
 ) -> BusinessRule:
-    experiments = generate_verification_experiments(rule)
+    if spa_mode and baseline_route:
+        soft_return_to_route(page, baseline_route)
+    locator_obs = capture_observation(page, investigation_id, with_screenshot=False)
+    alternate_options = _options_for_field(locator_obs, rule.condition.field)
+    experiments = generate_verification_experiments(
+        rule,
+        alternate_options=alternate_options or None,
+    )
     results: list[VerificationExperimentResult] = []
 
     for index, experiment in enumerate(experiments):
@@ -139,10 +161,9 @@ def verify_rule_on_page(
 
         events_before = len(network.events) if network is not None else 0
         try:
-            if spa_mode and baseline_route:
+            if spa_mode and baseline_route and index > 0:
                 soft_return_to_route(page, baseline_route)
-            # Capture current DOM so we can resolve stable_key → real selectors
-            locator_obs = capture_observation(page, investigation_id, with_screenshot=False)
+                locator_obs = capture_observation(page, investigation_id, with_screenshot=False)
             for field, value in experiment.set_fields.items():
                 _set_field(
                     page,

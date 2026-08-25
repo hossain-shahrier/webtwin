@@ -116,6 +116,24 @@ curl -X POST http://127.0.0.1:8060/applications/{application_key}/golden/v1
 
 Golden snapshots survive API restart when using Postgres + file-backed catalog store.
 
+## Golden demo path (MVP)
+
+Use this path to prove the behavioral loop (not a catalog crawl):
+
+1. Create investigation with **Exploration mode = Form / behavior (information gain)** and goal *Discover business logic*.
+2. Point at a form-heavy target (synthetic ATS fixtures under `tests/evaluation/synthetic_ats/fixtures/`, or an authorized form portal).
+3. Run API + browser worker until status is `completed`.
+4. Confirm **≥1 verified** rule on the investigation (synthetic suite aggregate ≥5 across L01/L02/L04/L06 + exploration).
+5. Ask tab: question matching a verified field → answer + citations; unrelated question → refuse.
+6. **Copy AI Context** / **Export Clone Spec** — expect `# WebTwin AI context`, selectors, and `test_scenario` on verified rules.
+7. Pin golden: `POST /applications/{application_key}/golden/v1`.
+
+Regression command:
+
+```bash
+WEBTWIN_BENCHMARK_LEVELS=level_01,level_02,level_03 pnpm nx run evaluation:benchmark
+```
+
 ## Success checklist
 
 See [CLONE_READINESS.md](./CLONE_READINESS.md) for metrics and case matrix.

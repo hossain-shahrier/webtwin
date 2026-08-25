@@ -246,13 +246,34 @@ def choose_site_map_action(
     allow_caution: bool = False,
     known_rules: list[BusinessRule] | None = None,
 ) -> PlannedAction | None:
-    """Deep BFS: frontier pages first, form-sweep on current page when frontier is empty."""
+    """Deep BFS with interleaved form sweeps when the current page has interactive controls."""
     from webtwin_core.reference_system.site_graph import navigate_priority, normalize_screen_id
 
     from webtwin_core.exploration.state import route_key
 
     inventory = _automatable_inventory(inventory, allow_caution=allow_caution)
     nav_candidates = state.unexplored_navigate_actions(inventory)
+    form_prioritized = _prioritize_form_actions(state, inventory, known_rules)
+    form_only = [
+        (action, value)
+        for action, value in form_prioritized
+        if action.type not in {ActionType.NAVIGATE, ActionType.ROUTE}
+    ]
+
+    # Interleave: every other action (or when frontier is empty), prefer form-sweep so
+    # site_map crawls still produce value→visibility diffs on form-heavy pages.
+    pages_seen = max(len(state.pages_seen_urls), 1)
+    should_form_sweep = bool(form_only) and (
+        not state.frontier or state.consecutive_no_diff >= 2 or pages_seen % 2 == 0
+    )
+    if should_form_sweep:
+        action, value = form_only[0]
+        return PlannedAction(
+            action=action,
+            value=value,
+            reason=f"site_map form-sweep {action.target}" + (f"={value}" if value else ""),
+            expected_information_gain=information_gain(state, action, value),
+        )
 
     matched_index: int | None = None
     matched: tuple[ExploratoryAction, str] | None = None
@@ -325,9 +346,8 @@ def choose_site_map_action(
                         )
         state.rotate_frontier()
 
-    prioritized = _prioritize_form_actions(state, inventory, known_rules)
-    if prioritized:
-        action, value = prioritized[0]
+    if form_prioritized:
+        action, value = form_prioritized[0]
         if action.type in {ActionType.NAVIGATE, ActionType.ROUTE} and value is None:
             value = action.values[0] if action.values else None
         return PlannedAction(

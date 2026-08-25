@@ -16,6 +16,8 @@ class AnswerCitation(BaseModel):
     evidence_id: UUID | None = None
     confidence: float | None = None
     label: str | None = None
+    evidence_summary: str | None = None
+    screen_path: str | None = None
 
 
 class QuestionAnswer(BaseModel):

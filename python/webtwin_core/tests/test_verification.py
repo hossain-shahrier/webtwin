@@ -20,6 +20,20 @@ def test_generate_verification_experiments_includes_positive_and_negative() -> N
     assert experiments[1].set_fields["condition"] == "yes"
 
 
+def test_generate_verification_experiments_uses_select_options() -> None:
+    from webtwin_core.verification.engine import _alternate_value
+
+    assert _alternate_value("IT", ["IT", "FR", "DE"]) == "FR"
+    rule = BusinessRule(
+        investigation_id=__import__("uuid").uuid4(),
+        name="country shows province",
+        condition=RuleCondition(field="country", operator="equals", value="IT"),
+        effect=RuleEffect(field="province", visible=True),
+    )
+    experiments = generate_verification_experiments(rule, alternate_options=["IT", "FR", "DE"])
+    assert any(exp.set_fields.get("country") == "FR" for exp in experiments)
+
+
 def test_summarize_verification_marks_verified_when_all_pass() -> None:
     rule = BusinessRule(
         investigation_id=__import__("uuid").uuid4(),

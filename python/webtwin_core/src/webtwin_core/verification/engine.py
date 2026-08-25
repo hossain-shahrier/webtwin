@@ -34,7 +34,7 @@ class VerificationRun(BaseModel):
     results: list[VerificationExperimentResult] = Field(default_factory=list)
 
 
-def _alternate_value(value: str) -> str | None:
+def _alternate_value(value: str, options: list[str] | None = None) -> str | None:
     pairs = {
         "yes": "no",
         "no": "yes",
@@ -46,10 +46,20 @@ def _alternate_value(value: str) -> str | None:
         "off": "on",
     }
     lowered = value.lower()
-    return pairs.get(lowered)
+    if lowered in pairs:
+        return pairs[lowered]
+    if options:
+        others = [option for option in options if option != value and option != ""]
+        if others:
+            return others[0]
+    return None
 
 
-def generate_verification_experiments(rule: BusinessRule) -> list[VerificationExperiment]:
+def generate_verification_experiments(
+    rule: BusinessRule,
+    *,
+    alternate_options: list[str] | None = None,
+) -> list[VerificationExperiment]:
     experiments: list[VerificationExperiment] = []
     trigger = rule.condition.field
     trigger_value = str(rule.condition.value)
@@ -83,7 +93,7 @@ def generate_verification_experiments(rule: BusinessRule) -> list[VerificationEx
         )
     )
 
-    alternate = _alternate_value(trigger_value)
+    alternate = _alternate_value(trigger_value, alternate_options)
     if alternate is not None:
         inverted = dict(effect_expectation)
         if "visible" in inverted:

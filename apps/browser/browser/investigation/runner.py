@@ -100,8 +100,11 @@ def _locate_rule_context(
     target_url: str,
     routes_seen: list[str],
     use_spa: bool,
+    last_url: str | None = None,
 ) -> str | None:
     """Navigate until condition field is present; return SPA baseline route when applicable."""
+    from urllib.parse import urljoin
+
     needed = rule.condition.field
 
     def _baseline() -> str | None:
@@ -113,11 +116,21 @@ def _locate_rule_context(
         return _baseline()
 
     candidates: list[str] = []
+    if last_url:
+        candidates.append(last_url)
     if use_spa:
-        candidates.extend(["#/a", "#/b", "#/c", "#/form", "#/"])
-        candidates.extend(routes_seen)
+        candidates.extend(["#/form", "#/a", "#/b", "#/c", "#/"])
+        candidates.extend(reversed(list(routes_seen)))
     else:
-        candidates.extend(reversed([r for r in routes_seen if str(r).startswith("http")]))
+        # Prefer most recently seen absolute URLs, then path-only routes joined to origin
+        http_routes = [r for r in routes_seen if str(r).startswith("http")]
+        path_routes = [
+            urljoin(target_url, str(r))
+            for r in routes_seen
+            if str(r).startswith("/") and not str(r).startswith("http")
+        ]
+        candidates.extend(reversed(http_routes))
+        candidates.extend(reversed(path_routes))
         candidates.append(target_url)
 
     seen: set[str] = set()
@@ -234,6 +247,7 @@ def _run_verification_phase(
             target_url=target_url,
             routes_seen=list(controller.state.routes_seen) + list(controller.state.pages_seen_urls),
             use_spa=use_spa,
+            last_url=controller.state.url,
         )
         _start_verification_if_needed(client, investigation_id)
         updated = verify_rule_on_page(

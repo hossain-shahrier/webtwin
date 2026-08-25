@@ -21,7 +21,7 @@ def test_ask_question_with_citations() -> None:
     evidence = Evidence(
         investigation_id=investigation.id,
         type=EvidenceType.DOM,
-        payload={"summary": "condition shows reason"},
+        payload={"summary": "condition shows reason", "path": "/form"},
     )
     store.evidence[evidence.id] = evidence
     rule = BusinessRule(
@@ -38,6 +38,49 @@ def test_ask_question_with_citations() -> None:
     answer = svc.ask_question(investigation.id, "Why does reason appear?")
     assert answer.refused is False
     assert answer.citations[0].rule_id == rule.id
+    assert answer.citations[0].evidence_summary == "condition shows reason"
+    assert answer.citations[0].screen_path == "/form"
+
+
+def test_ask_question_refuses_without_evidence() -> None:
+    store.clear()
+    from webtwin_core.models import Investigation
+
+    investigation = svc.create_investigation(
+        Investigation(goal="refuse test", target_url="https://example.com/form")
+    )
+    answer = svc.ask_question(investigation.id, "Why does unicorn_field appear?")
+    assert answer.refused is True
+    assert answer.confidence == 0.0
+
+
+def test_ask_question_refuses_unrelated_even_with_rules() -> None:
+    store.clear()
+    from webtwin_core.models import Investigation
+
+    investigation = svc.create_investigation(
+        Investigation(goal="refuse unrelated", target_url="https://example.com/form")
+    )
+    evidence = Evidence(
+        investigation_id=investigation.id,
+        type=EvidenceType.DOM,
+        payload={"summary": "condition shows reason"},
+    )
+    store.evidence[evidence.id] = evidence
+    rule = BusinessRule(
+        investigation_id=investigation.id,
+        name="condition affects reason visibility",
+        condition=RuleCondition(field="condition", operator="equals", value="no"),
+        effect=RuleEffect(field="reason", visible=True),
+        confidence=0.9,
+        status=RuleStatus.VERIFIED,
+        evidence_ids=[evidence.id],
+    )
+    store.rules[rule.id] = rule
+
+    answer = svc.ask_question(investigation.id, "Why does unicorn_xyz appear?")
+    assert answer.refused is True
+    assert answer.confidence == 0.0
 
 
 def test_export_cursor_context_includes_verified_rules() -> None:
